@@ -1,0 +1,15 @@
+// firestore.rules — paste into Firebase console → Firestore Database → Rules → Publish.
+// Replace OWNER_EMAIL with the email of the Firebase user whose password is your PIN.
+// The app's Settings → Cloud sync shows this file with your email already filled in.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function isOwner() { return request.auth != null && request.auth.token.email == 'OWNER_EMAIL'; }
+    // a module (tasks, commission, …) is readable by guests only if the owner switched it on in Settings → Front of house
+    function isPublic(m) { return get(/databases/$(db)/documents/public/settings).data.visibility[m] == true; }
+
+    match /public/{doc}            { allow read: if true;                     allow write: if isOwner(); }
+    match /modules/{m}             { allow read: if isOwner() || isPublic(m);   allow write: if isOwner(); }
+    match /modules/{m}/items/{id}  { allow read: if isOwner() || isPublic(m);   allow write: if isOwner(); }
+  }
+}

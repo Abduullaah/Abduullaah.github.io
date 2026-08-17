@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Backstage — flowork.</title>
+<meta name="description" content="Abdullah's private operating desk at flowork: today's call sheet, work in flight, and the commission ledger.">
+<meta name="theme-color" content="#F4F4EF">
+<meta name="robots" content="noindex, nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Backstage">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./css/app.css">
+<script>
+  // paint the right theme before the first frame (no flash)
+  (function(){try{var p=JSON.parse(localStorage.getItem("fw.ws.v1:pref:theme")||'"system"');var d=p==="dark"||(p==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.theme=d?"dark":"light";}catch(e){}})();
+</script>
+<script src="./config.js"></script>
+</head>
+<body>
+<div id="app" aria-live="polite">
+  <div class="lock"><div class="lock-card"><div class="word">flowork<i>.</i></div><div class="who muted" style="margin-top:12px">Loading…</div></div></div>
+</div>
+<noscript><p style="padding:24px;font-family:system-ui">Backstage needs JavaScript.</p></noscript>
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>
