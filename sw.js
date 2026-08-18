@@ -2,7 +2,7 @@
    App files: always fetched fresh from the network, bypassing the browser's HTTP cache
    (GitHub Pages sets max-age=600, which would otherwise serve a stale app for 10 minutes).
    The cache is only a fallback for when you are offline. */
-const CACHE = "backstage-v8";
+const CACHE = "backstage-v9";
 const CORE = ["./", "./index.html", "./css/app.css", "./config.js", "./manifest.webmanifest",
   "./js/app.js", "./js/ui.js", "./js/dates.js", "./js/store.js", "./js/auth.js", "./js/migrate.js",
   "./js/pages/home.js", "./js/pages/tasks.js", "./js/pages/commission.js", "./js/pages/settings.js",
