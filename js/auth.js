@@ -141,7 +141,7 @@ export const auth = {
   },
 
   /* ---------- visibility (what guests can see) ---------- */
-  DEFAULT_VIS: { home: true, tasks: true, commission: false, people: true, tasksNotes: true, tasksPeople: true, commissionClients: false, commissionAmounts: true },
+  DEFAULT_VIS: { home: true, tasks: true, commission: false, tasksNotes: true, tasksPeople: true, commissionClients: false, commissionAmounts: true },
   vis() { return { ...this.DEFAULT_VIS, ...(store.settings?.get()?.visibility || {}) }; },
   /* can the current viewer see a page? */
   canSee(pageId) {
@@ -151,7 +151,7 @@ export const auth = {
   },
   /* field-level masks for guests */
   mask(key) { return this.isGuest && this.vis()[key] === false; },
-  anyPublicPage() { const v = this.vis(); return ["home", "tasks", "commission", "people"].some(p => v[p]); },
+  anyPublicPage() { const v = this.vis(); return ["home", "tasks", "commission"].some(p => v[p]); },
 
   /* ---------- auto-lock ---------- */
   _wireIdle() {

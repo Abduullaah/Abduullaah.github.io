@@ -4,7 +4,7 @@ import { todayISO, dmy, monthLabel, ym, rangeFor, parse, today, iso, monday, MON
 import * as work from "./tasks.js";
 
 export const id = "commission";
-export const title = "Ledger";
+export const title = "Commission";
 export const icon = "ledger";
 
 export const STATUSES = ["Pending", "Invoiced", "Paid"];
@@ -64,7 +64,7 @@ export function render(r, c) {
   unsubs.forEach(u => u()); unsubs = [col.subscribe(paint), cfgDoc.subscribe(paint)];
   root.innerHTML = `
     <div class="page-head">
-      <div><h1>Ledger</h1><div class="sub" data-sub></div></div>
+      <div><h1>Commission</h1><div class="sub" data-sub></div></div>
       <div class="actions" data-actions></div>
     </div>
     <div class="stats" data-stats></div>

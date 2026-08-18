@@ -1,9 +1,9 @@
 /* pages/tasks.js — Work: everything in flight, week by week. Tasks and productions. */
 import { $, $$, el, esc, icons, uid, nowISO, toast, modal, confirmDialog, menu, download, printHTML, debounce } from "../ui.js";
-import { iso, parse, today, todayISO, addDays, monday, weekNo, weekLabel, weekShort, dayShort, dayLabel, dmy, rangeFor, DAY } from "../dates.js";
+import { iso, parse, today, todayISO, addDays, monday, weekNo, weekLabel, weekShort, dayShort, dayLabel, dmy, rangeFor, relTime, DAY } from "../dates.js";
 
 export const id = "tasks";
-export const title = "Work";
+export const title = "Tasks";
 export const icon = "tasks";
 
 export const STATUSES = ["Not Started", "In Progress", "Completed"];
@@ -16,7 +16,7 @@ const prClass = p => (p || "Medium").toLowerCase();
 const PROD_RE = /\b(video|reel|edit|editing|podcast|shoot|film|footage|cut|clip|episode|trailer|teaser|animation)\b/i;
 
 let ctx, root, col, unsub = null, lastDel = null;
-let view = "list", boardBy = "status", showFilters = false;
+let tab = "work", view = "list", boardBy = "status", showFilters = false, selPerson = "";
 let filters = { q: "", status: "", priority: "", given: "", tag: "", kind: "", from: "", to: "", chip: "" };
 
 /* ---------- task helpers (exported for Today / People / Ledger) ---------- */
@@ -115,11 +115,15 @@ export function render(r, c) {
   unsub?.(); unsub = col.subscribe(() => paint());
   root.innerHTML = `
     <div class="page-head">
-      <div><h1>Work</h1><div class="sub" data-sub></div></div>
+      <div><h1>Tasks</h1><div class="sub" data-sub></div></div>
       <div class="actions" data-actions></div>
     </div>
-    <div class="toolbar">
-      <div class="search">${icons.search}<input class="inp" type="search" placeholder="Search work…" data-q autocomplete="off"></div>
+    <div class="subtabs" role="tablist">
+      <button type="button" role="tab" data-tab="work">Work</button>
+      <button type="button" role="tab" data-tab="people">People</button>
+    </div>
+    <div class="toolbar" data-toolbar>
+      <div class="search">${icons.search}<input class="inp" type="search" placeholder="Search tasks…" data-q autocomplete="off"></div>
       <div class="seg" role="group" aria-label="View">
         <button type="button" data-view="list" aria-pressed="true">${icons.list}<span class="hide-mobile">List</span></button>
         <button type="button" data-view="board" aria-pressed="false">${icons.board}<span class="hide-mobile">Board</span></button>
@@ -129,8 +133,7 @@ export function render(r, c) {
       </div>
       <button type="button" class="btn" data-toggle-filters>${icons.filter}<span>Filter</span><span class="count-badge" data-fcount hidden></span></button>
       <span class="grow"></span>
-      <button type="button" class="btn ghost" data-update>${icons.copy}<span class="hide-mobile">Weekly update</span></button>
-      <button type="button" class="btn ghost" data-export>${icons.print}<span class="hide-mobile">Report</span></button>
+      <button type="button" class="icon-btn" data-more-menu aria-label="More" title="Update & report">${icons.more}</button>
     </div>
     <div class="filters" data-filters hidden>
       <select class="inp" data-f="kind"><option value="">Tasks & productions</option><option value="task">Tasks only</option><option value="production">Productions only</option></select>
@@ -172,8 +175,11 @@ function wire() {
     });
   });
   $("[data-clear]", root).addEventListener("click", () => { filters = { q: "", status: "", priority: "", given: "", tag: "", kind: "", from: "", to: "", chip: "" }; $$("[data-f]", root).forEach(s => s.value = ""); q.value = ""; $$("[data-chip]", root).forEach(x => x.setAttribute("aria-pressed", "false")); paint(); });
-  $("[data-export]", root).addEventListener("click", openExport);
-  $("[data-update]", root).addEventListener("click", openUpdate);
+  $$("[data-tab]", root).forEach(b => b.addEventListener("click", () => { tab = b.dataset.tab; selPerson = ""; paint(); }));
+  $("[data-more-menu]", root).addEventListener("click", e => menu(e.currentTarget, [
+    { label: "Weekly update", icon: "copy", onClick: openUpdate },
+    { label: "Report / PDF", icon: "print", onClick: openExport },
+  ]));
   $("[data-content]", root).addEventListener("click", onContentClick);
   $("[data-content]", root).addEventListener("change", onContentChange);
   document.addEventListener("keydown", onKey);
@@ -223,7 +229,18 @@ function paint() {
   $("[data-new]", root)?.addEventListener("click", () => openEditor(null));
   $("[data-quick]", root)?.addEventListener("click", () => quickCapture());
   $("[data-boardby]", root).hidden = view !== "board";
-  $("[data-update]", root).hidden = !owner;
+  $("[data-more-menu]", root).hidden = !owner;
+  $$("[data-tab]", root).forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+  $("[data-toolbar]", root).hidden = tab !== "work";
+  $("[data-filters]", root).hidden = tab !== "work" || !showFilters;
+  $("[data-subtabs-wrap]", root);
+  if (tab === "people") {
+    $("[data-actions]", root).innerHTML = owner ? `<button type="button" class="btn" data-quick title="Quick capture (Q)">${icons.spark}<span class="hide-mobile">Quick</span></button><button type="button" class="btn primary" data-new>${icons.plus}New</button>` : "";
+    $("[data-new]", root)?.addEventListener("click", () => openEditor(null));
+    $("[data-quick]", root)?.addEventListener("click", () => quickCapture());
+    $("[data-content]", root).innerHTML = renderPeople();
+    return;
+  }
   $$("[data-by]", root).forEach(b => b.setAttribute("aria-pressed", String(b.dataset.by === boardBy)));
 
   const gs = $("[data-f=given]", root), ts = $("[data-f=tag]", root);
@@ -342,8 +359,66 @@ function emptyHTML() {
     ${any ? `<button type="button" class="btn" data-clear-all>Clear filters</button>` : (ctx.auth.isOwner ? `<button type="button" class="btn primary" data-new-empty>${icons.plus}New task</button>` : "")}</div>`;
 }
 
+
+/* ---------- People subtab — who gives you work, and where it stands. Tasks only. ---------- */
+function renderPeople() {
+  if (ctx.auth.mask("tasksPeople")) return `<div class="empty"><h3>People are hidden</h3><p>Names are switched off for guests on this workspace.</p></div>`;
+  const showNotes = !ctx.auth.mask("tasksNotes");
+  const map = new Map();
+  all().forEach(t => { if (!t.givenBy) return; if (!map.has(t.givenBy)) map.set(t.givenBy, []); map.get(t.givenBy).push(t); });
+  if (!map.size) return `<div class="empty"><h3>No one yet</h3><p>People show up here as soon as a task records who asked for it.</p></div>`;
+  const list = Array.from(map.entries()).map(([name, ts]) => ({
+    name, tasks: ts,
+    open: ts.filter(t => t.status !== "Completed").length,
+    late: ts.filter(isLate).length,
+    done: ts.filter(t => t.status === "Completed").length,
+    last: ts.map(t => t.updatedAt).filter(Boolean).sort().pop(),
+  })).sort((a, b) => b.open - a.open || b.tasks.length - a.tasks.length || a.name.localeCompare(b.name));
+  if (selPerson && !map.has(selPerson)) selPerson = "";
+  const sel = selPerson ? list.find(p => p.name === selPerson) : null;
+
+  const card = p => `<button type="button" class="card person" data-p="${esc(p.name)}" aria-pressed="${p.name === selPerson}">
+      <div class="row" style="justify-content:space-between"><b>${esc(p.name)}</b><span class="mono muted" style="font-size:11px">${p.last ? esc(relTime(p.last)) : ""}</span></div>
+      <div class="row wrap gap-4" style="font-size:12.5px;color:var(--muted)">
+        <span>${p.open} open of ${p.tasks.length}</span>
+        ${p.late ? `<span class="tag late">${p.late} past due</span>` : ""}
+        ${p.done ? `<span>· ${p.done} done</span>` : ""}
+      </div>
+      <div class="bar" style="margin-top:2px"><i style="width:${Math.round(p.done / p.tasks.length * 100)}%"></i></div>
+    </button>`;
+
+  const row = t => `<div class="ov-item" data-id="${t.id}" data-edit>
+      <span class="dot-st ${stClass(t.status)}" style="margin-top:7px"></span>
+      <div style="min-width:0"><div class="t" style="font-weight:500">${esc(t.title)}</div>
+        <div class="m"><span>${esc(isProd(t) ? (t.stage || t.status) : t.status)}</span><span>· ${esc(whenShort(t))}</span>${isLate(t) ? `<span class="tag late">Past due</span>` : ""}</div>
+        ${showNotes && t.notes ? `<div class="muted" style="font-size:12.5px;margin-top:2px">${esc(t.notes)}</div>` : ""}</div>
+      <div class="side"><span class="prio ${prClass(t.priority)}" style="font-size:11px"><i></i>${esc(t.priority)}</span></div>
+    </div>`;
+
+  let detail = "";
+  if (sel) {
+    const open = sortTasks(sel.tasks.filter(t => t.status !== "Completed"));
+    const done = sortTasks(sel.tasks.filter(t => t.status === "Completed"));
+    detail = `<div class="stack gap-24">
+      <div class="page-head" style="margin:0">
+        <div><h1 style="font-size:28px">${esc(sel.name)}</h1><div class="sub">${sel.open} open · ${sel.done} completed${sel.late ? ` · <span style="color:var(--bad)">${sel.late} past due</span>` : ""}</div></div>
+        <div class="actions">${ctx.auth.isOwner ? `<button type="button" class="btn" data-person-update>${icons.copy}<span class="hide-mobile">Update for ${esc(sel.name.split(" ")[0])}</span></button>` : ""}<button type="button" class="btn ghost" data-close-person aria-label="Close">${icons.x}</button></div>
+      </div>
+      ${open.length ? `<div class="card"><div class="card-h"><h2>Open</h2><span class="muted" style="font-size:12.5px">${open.length}</span></div><div class="ov-list">${open.map(row).join("")}</div></div>` : ""}
+      ${done.length ? `<div class="card"><div class="card-h"><h2>Completed</h2><span class="muted" style="font-size:12.5px">${done.length}</span></div><div class="ov-list">${done.slice(0, 12).map(row).join("")}${done.length > 12 ? `<div class="ov-item muted" style="font-size:12.5px;cursor:default">and ${done.length - 12} more</div>` : ""}</div></div>` : ""}
+    </div>`;
+  }
+  return `<div class="people-grid ${sel ? "split" : ""}">
+    <div class="people-list">${list.map(card).join("")}</div>
+    ${sel ? `<div>${detail}</div>` : ""}</div>`;
+}
+
 /* ---------- interactions ---------- */
 function onContentClick(e) {
+  const pc = e.target.closest("[data-p]");
+  if (pc) { selPerson = pc.dataset.p === selPerson ? "" : pc.dataset.p; paint(); return; }
+  if (e.target.closest("[data-close-person]")) { selPerson = ""; paint(); return; }
+  if (e.target.closest("[data-person-update]")) { openUpdate(selPerson); return; }
   if (e.target.closest("[data-clear-all]")) { $("[data-clear]", root).click(); return; }
   if (e.target.closest("[data-new-empty]")) { openEditor(null); return; }
   const holder = e.target.closest("[data-id]"); if (!holder) return;
@@ -528,12 +603,12 @@ export function buildUpdate({ from, to, person = "", notes = true }) {
   if (!list.length) parts.push("Nothing logged for this period.");
   return parts.join("\n").trim();
 }
-function openUpdate() {
+function openUpdate(person = "") {
   const [wa, wb] = rangeFor("thisWeek");
   const body = el(`<div class="stack gap-16">
     <div class="row wrap"><button type="button" class="chip" data-ur="thisWeek" aria-pressed="true">This week</button><button type="button" class="chip" data-ur="lastWeek">Last week</button><button type="button" class="chip" data-ur="thisMonth">This month</button></div>
     <div class="grid-2"><div class="field"><label>From</label><input class="inp" type="date" data-uf value="${wa}"></div><div class="field"><label>To</label><input class="inp" type="date" data-ut value="${wb}"></div></div>
-    <div class="grid-2"><div class="field"><label>For</label><select class="inp" data-up><option value="">Everyone</option>${givers().map(g => `<option>${esc(g)}</option>`).join("")}</select></div>
+    <div class="grid-2"><div class="field"><label>For</label><select class="inp" data-up><option value="">Everyone</option>${givers().map(g => `<option ${g === person ? "selected" : ""}>${esc(g)}</option>`).join("")}</select></div>
       <div class="field"><label>Notes</label><label class="switch" style="height:38px"><input type="checkbox" data-un checked><span class="track"></span><span class="lbl">Include notes</span></label></div></div>
     <div class="field"><label>Message</label><textarea class="inp mono" data-utext style="min-height:220px;font-size:12.5px" readonly></textarea></div>
   </div>`);

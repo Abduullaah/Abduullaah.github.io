@@ -1,8 +1,8 @@
 /* sw.js — offline shell. Network first for app files (so updates arrive), cache fallback offline. */
-const CACHE = "backstage-v1";
+const CACHE = "backstage-v2";
 const CORE = ["./", "./index.html", "./css/app.css", "./config.js", "./manifest.webmanifest",
   "./js/app.js", "./js/ui.js", "./js/dates.js", "./js/store.js", "./js/auth.js", "./js/migrate.js",
-  "./js/pages/home.js", "./js/pages/tasks.js", "./js/pages/commission.js", "./js/pages/people.js", "./js/pages/settings.js",
+  "./js/pages/home.js", "./js/pages/tasks.js", "./js/pages/commission.js", "./js/pages/settings.js",
   "./icons/favicon.svg", "./icons/icon-192.png", "./icons/icon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE).catch(() => {}))); self.skipWaiting(); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });

@@ -74,7 +74,7 @@ export function render(r, c) {
 
         <section class="settings-sec" id="s-about"><h2>About</h2>
           <div class="card"><div class="card-b">
-            <dl class="kv"><dt>Version</dt><dd class="mono">${VERSION}</dd><dt>Storage</dt><dd><span class="badge-mode ${cloud ? "cloud" : "local"}">${cloud ? "Cloud · Firestore" : "This device"}</span></dd><dt>Shortcuts</dt><dd class="mono" style="font-size:12.5px">Q quick capture · N new · / search · E report · Esc close</dd><dt>Install</dt><dd style="font-size:13.5px">On iPhone: Share → Add to Home Screen. On Android/desktop Chrome: Install app from the address bar. Works offline; syncs when back.</dd></dl>
+            <dl class="kv"><dt>Version</dt><dd class="mono">${VERSION}</dd><dt>Storage</dt><dd><span class="badge-mode ${cloud ? "cloud" : "local"}">${cloud ? "Cloud · Firestore" : "This device"}</span></dd><dt>Shortcuts</dt><dd class="mono" style="font-size:12.5px">Q quick capture · N new · / search · Esc close</dd><dt>Install</dt><dd style="font-size:13.5px">On iPhone: Share → Add to Home Screen. On Android/desktop Chrome: Install app from the address bar. Works offline; syncs when back.</dd></dl>
           </div></div>
         </section>
       </div>
@@ -145,13 +145,12 @@ function paintDynamic() {
   const sw = (key, label, sub = "") => `<label class="switch"><input type="checkbox" data-vis="${key}" ${vis[key] ? "checked" : ""}><span class="track"></span><span class="lbl">${label}${sub ? `<small>${sub}</small>` : ""}</span></label>`;
   const rowV = (key, t, s, subs = "") => `<div><div class="vis-row"><div><div class="t">${t}</div><div class="s">${s}</div></div>${sw(key, "")}</div>${subs && vis[key] ? `<div class="vis-sub">${subs}</div>` : ""}</div>`;
   $("[data-vis]", root).innerHTML =
-    rowV("home", "Today", "The call sheet, this week, and year figures for whatever else is shared.") +
-    rowV("tasks", "Work", "Tasks and productions, week by week.", sw("tasksPeople", "Show who gave each task", "Names of colleagues in Given by") + sw("tasksNotes", "Show notes", "Blockers and comments")) +
-    rowV("commission", "Ledger", "Sales and commission. Off by default — this is your money.", sw("commissionAmounts", "Show amounts", "Off: guests only see counts and statuses") + sw("commissionClients", "Show client names", "Off: clients appear as “Client”")) +
-    rowV("people", "People", "Colleagues and clients with their open work.");
+    rowV("home", "Home", "The preview page: what is on, this week, and figures for whatever else is shared.") +
+    rowV("tasks", "Tasks", "Tasks and productions week by week, plus the People subtab.", sw("tasksPeople", "Show who gave each task", "Names of colleagues in Given by") + sw("tasksNotes", "Show notes", "Blockers and comments")) +
+    rowV("commission", "Commission", "Sales and commission. Off by default — this is your money.", sw("commissionAmounts", "Show amounts", "Off: guests only see counts and statuses") + sw("commissionClients", "Show client names", "Off: clients appear as “Client”"));
   $$("[data-vis]", root).forEach(i => i.addEventListener("change", () => { ctx.store.settings.set({ visibility: { ...ctx.auth.vis(), [i.dataset.vis]: i.checked } }); }));
-  const on = ["home", "tasks", "commission", "people"].filter(k => vis[k]);
-  $("[data-vis-summary]", root).textContent = on.length ? `Guests see: ${on.map(k => ({ home: "Today", tasks: "Work", commission: "Ledger", people: "People" })[k]).join(", ")}` : "Guests see nothing — the link only shows the PIN screen.";
+  const on = ["home", "tasks", "commission"].filter(k => vis[k]);
+  $("[data-vis-summary]", root).textContent = on.length ? `Guests see: ${on.map(k => ({ home: "Home", tasks: "Tasks", commission: "Commission" })[k]).join(", ")}` : "Guests see nothing — the link only shows the PIN screen.";
   paintCloud();
 }
 
