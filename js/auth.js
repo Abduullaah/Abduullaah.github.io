@@ -88,6 +88,7 @@ export const auth = {
       try {
         await authMod.setPersistence(fa, keep ? authMod.browserLocalPersistence : authMod.browserSessionPersistence);
         await authMod.signInWithEmailAndPassword(fa, this.ownerEmail, pin);
+        try { await fa.authStateReady?.(); } catch {}
         sessionStorage.removeItem("fw.guest");
         this.preview = false; this.state = "owner"; emit(); store.resubscribe();
         return { ok: true };

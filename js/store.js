@@ -86,13 +86,14 @@ async function loadFirebase(cfg) {
 function cloudCollection(fb, name, setStatus) {
   const { fs, db } = fb;
   const ref = fs.collection(db, "modules", name, "items");
-  let items = [], denied = false, unsub = null, resolveReady;
+  let items = [], denied = false, unsub = null, resolveReady, retry = 0, retryTimer = null;
   const ready = new Promise(r => resolveReady = r);
   const ev = emitter();
   const start = () => {
+    clearTimeout(retryTimer);
     unsub?.();
     unsub = fs.onSnapshot(ref, { includeMetadataChanges: true }, snap => {
-      denied = false;
+      denied = false; retry = 0;
       items = snap.docs.map(d => d.data());
       ev.emit(items);
       setStatus(snap.metadata.hasPendingWrites ? "saving" : "synced");
@@ -100,6 +101,8 @@ function cloudCollection(fb, name, setStatus) {
     }, err => {
       denied = err.code === "permission-denied";
       if (!denied) { console.warn("[store]", name, err); setStatus("error"); }
+      // a listener opened a moment before sign-in lands is denied once — take the hint and retry
+      if (denied && fb.auth.currentUser && retry < 5) { retry++; retryTimer = setTimeout(start, 400 * retry); }
       items = []; ev.emit(items); resolveReady();
     });
   };
@@ -138,17 +141,19 @@ function cloudCollection(fb, name, setStatus) {
 function cloudDoc(fb, path, setStatus) {
   const { fs, db } = fb;
   const ref = fs.doc(db, ...path);
-  let data = {}, denied = false, unsub = null, resolveReady;
+  let data = {}, denied = false, unsub = null, resolveReady, retry = 0, retryTimer = null;
   const ready = new Promise(r => resolveReady = r);
   const ev = emitter();
   const start = () => {
+    clearTimeout(retryTimer);
     unsub?.();
     unsub = fs.onSnapshot(ref, { includeMetadataChanges: true }, snap => {
-      denied = false; data = snap.exists() ? snap.data() : {};
+      denied = false; retry = 0; data = snap.exists() ? snap.data() : {};
       ev.emit(data); setStatus(snap.metadata.hasPendingWrites ? "saving" : "synced"); resolveReady();
     }, err => {
       denied = err.code === "permission-denied";
       if (!denied) { console.warn("[store]", path.join("/"), err); setStatus("error"); }
+      if (denied && fb.auth.currentUser && retry < 5) { retry++; retryTimer = setTimeout(start, 400 * retry); }
       data = {}; ev.emit(data); resolveReady();
     });
   };
@@ -240,9 +245,9 @@ class Store {
   /* after sign-in / sign-out, permission-denied listeners must be re-created */
   resubscribe() {
     if (this.mode !== "cloud") return;
-    this._cols.forEach(c => c.restart());
-    this._docs.forEach(d => d.restart());
-    this.settings?.restart?.();
+    const run = () => { this._cols.forEach(c => c.restart()); this._docs.forEach(d => d.restart()); this.settings?.restart?.(); };
+    run();
+    setTimeout(run, 700);   // the auth token can land a beat after sign-in
   }
   /* ---------- device prefs (never synced) ---------- */
   pref(key, fb = null) { return lsGet(`${NS}:pref:${key}`, fb); }
