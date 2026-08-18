@@ -317,7 +317,7 @@ export async function pushLocalToCloud() {
   cloudHousekeeping();
   render();
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).then(r => r.update()).catch(() => {});
     let announced = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (announced) return;
