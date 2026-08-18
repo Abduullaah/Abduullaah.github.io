@@ -161,11 +161,20 @@ function paintCloud() {
   const rules = `rules_version = '2';
 service cloud.firestore {
   match /databases/{db}/documents {
-    function isOwner() { return request.auth != null && request.auth.token.email == '${email}'; }
-    function isPublic(m) { return get(/databases/$(db)/documents/public/settings).data.visibility[m] == true; }
-    match /public/{doc}            { allow read: if true;                  allow write: if isOwner(); }
-    match /modules/{m}             { allow read: if isOwner() || isPublic(m); allow write: if isOwner(); }
-    match /modules/{m}/items/{id}  { allow read: if isOwner() || isPublic(m); allow write: if isOwner(); }
+
+    function isOwner() {
+      return request.auth != null && request.auth.token.email == '${email}';
+    }
+    function visibility() {
+      return exists(/databases/$(db)/documents/public/settings)
+        ? get(/databases/$(db)/documents/public/settings).data.get('visibility', {})
+        : {};
+    }
+    function isPublic(m) { return visibility().get(m, false) == true; }
+
+    match /public/{doc}           { allow read: if true;                    allow write: if isOwner(); }
+    match /modules/{m}            { allow read: if isOwner() || isPublic(m); allow write: if isOwner(); }
+    match /modules/{m}/items/{id} { allow read: if isOwner() || isPublic(m); allow write: if isOwner(); }
   }
 }`;
   if (cloud) {

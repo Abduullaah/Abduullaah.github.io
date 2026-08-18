@@ -1,21 +1,16 @@
 /* config.js — deployment configuration.
-   Cloud sync is optional. Leave `firebase` as null and Backstage runs on the device it's opened on.
-   To sync every device: paste your Firebase web config here (or use Settings → Cloud sync inside the app,
-   which stores it on that device only). Web API keys are safe to publish — access is enforced by
-   Firestore rules + your PIN (see firestore.rules).
+   The Firebase web config is safe to publish: it only names the project. Access is controlled by
+   your PIN (the password of ownerEmail in Firebase Authentication) and by firestore.rules.
 */
 window.FLOWORK_CONFIG = {
-  firebase: null,
-  /* example:
   firebase: {
-    apiKey: "AIza...",
+    apiKey: "AIzaSyCEyQnrKbzxyP_dDL9doceyb0hrQ4ta6cU",
     authDomain: "flowork-backstage.firebaseapp.com",
     projectId: "flowork-backstage",
-    storageBucket: "flowork-backstage.appspot.com",
-    messagingSenderId: "1234567890",
-    appId: "1:1234567890:web:abcdef",
+    storageBucket: "flowork-backstage.firebasestorage.app",
+    messagingSenderId: "1079573785194",
+    appId: "1:1079573785194:web:9534ab35389558e3ec7813",
   },
-  */
-  ownerEmail: "",            // the Firebase user whose password is your PIN
+  ownerEmail: "podcast@flowork.me",   // the Firebase user whose password is your PIN
   workspace: {},
 };
