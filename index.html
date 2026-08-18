@@ -19,7 +19,7 @@
 <link rel="stylesheet" href="./css/app.css">
 <script>
   // paint the right theme before the first frame (no flash)
-  (function(){try{var p=JSON.parse(localStorage.getItem("fw.ws.v1:pref:theme")||'"system"');var d=p==="dark"||(p==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.theme=d?"dark":"light";}catch(e){}})();
+  (function(){try{var p=JSON.parse(localStorage.getItem("fw.ws.v1:pref:theme")||'"light"');var d=p==="dark"||(p==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.theme=d?"dark":"light";}catch(e){}})();
 </script>
 <script src="./config.js"></script>
 </head>

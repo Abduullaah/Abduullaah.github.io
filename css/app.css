@@ -72,7 +72,7 @@ html{height:100%;-webkit-text-size-adjust:100%}
 body{margin:0;min-height:100%;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14.5px;line-height:1.5;
   -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-feature-settings:"ss01","cv11";}
 button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
-button{cursor:pointer;border:0;background:none;padding:0;margin:0;text-align:inherit}
+button{cursor:pointer;border:0;background:none;padding:0;margin:0;text-align:inherit;touch-action:manipulation}
 button:disabled{cursor:not-allowed;opacity:.5}
 a{color:var(--sage-ink);text-decoration:none}
 a:hover{text-decoration:underline;text-underline-offset:3px}
@@ -397,7 +397,7 @@ select.inline.high{color:var(--bad)}select.inline.medium{color:var(--ink-2)}sele
 .menu hr{border:0;border-top:1px solid var(--line);margin:6px 0}
 
 /* ---------- lock screen (the entry pad) ---------- */
-.lock{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:24px;
+.lock{touch-action:manipulation;min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:24px;
   background:radial-gradient(900px 500px at 50% -10%,var(--sage-soft),transparent 70%),var(--paper)}
 .lock-card{width:100%;max-width:380px;text-align:center;animation:modalIn .4s var(--ease)}
 .lock .word{font-family:var(--serif);font-size:38px;letter-spacing:-.02em;line-height:1}
@@ -411,7 +411,7 @@ select.inline.high{color:var(--bad)}select.inline.medium{color:var(--ink-2)}sele
 .pin-dots.ok i{background:var(--sage);border-color:var(--sage)}
 @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
 .pad{display:grid;grid-template-columns:repeat(3,72px);gap:10px;justify-content:center}
-.pad button{height:64px;border-radius:14px;background:var(--surface);border:1px solid var(--line);font-family:var(--serif);font-size:26px;color:var(--ink);
+.pad button{touch-action:manipulation;-webkit-tap-highlight-color:transparent;height:64px;border-radius:14px;background:var(--surface);border:1px solid var(--line);font-family:var(--serif);font-size:26px;color:var(--ink);
   box-shadow:var(--shadow-1);transition:all .12s var(--ease);display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none}
 .pad button:hover{border-color:var(--sage-mid);background:var(--sage-soft)}
 .pad button:active{transform:scale(.96);background:var(--sage-soft)}

@@ -18,7 +18,7 @@ let shellBuilt = false;
 /* ---------- theme ---------- */
 const mq = window.matchMedia("(prefers-color-scheme: dark)");
 function applyTheme() {
-  const pref = store.pref("theme", "system");
+  const pref = store.pref("theme", "light");
   const dark = pref === "dark" || (pref === "system" && mq.matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
   $$("[data-theme-toggle]").forEach(b => { b.innerHTML = dark ? icons.sun : icons.moon; b.title = dark ? "Switch to light" : "Switch to dark"; });
@@ -277,18 +277,33 @@ async function firstRun() {
     } catch (e) { /* no seed shipped — start empty */ }
   }
 }
-/* when the owner first unlocks a cloud workspace and this device still holds local data, move it up */
-async function migrateLocalToCloud() {
-  if (store.mode !== "cloud" || auth.state !== "owner") return;
+/* Cloud housekeeping, run whenever the owner is signed in:
+   1. make sure the shared settings doc exists (guests read visibility from it)
+   2. lift this device's local data up the first time — and only mark it done once it really landed */
+async function cloudHousekeeping() {
+  if (store.mode !== "cloud" || !auth.isOwner) return;
+  await store.settings.ready;
+  const cur = store.settings.get() || {};
+  if (!cur.visibility) await store.settings.set({ visibility: auth.vis(), profile: cur.profile || profile() });
+
   if (store.pref("cloudMigrated") || !store.localHasData()) return;
   const t = store.collection("tasks"), c = store.collection("commission");
-  const ok = await Promise.race([Promise.all([t.ready, c.ready]).then(() => true), new Promise(r => setTimeout(() => r(false), 8000))]);
-  if (!ok || t.denied || c.denied) return;
-  if (t.all().length || c.all().length) { store.setPref("cloudMigrated", true); return; } // cloud already has data — keep it
+  const settled = await Promise.race([Promise.all([t.ready, c.ready]).then(() => true), new Promise(r => setTimeout(() => r(false), 10000))]);
+  if (!settled || t.denied || c.denied) return;            // not ready yet — try again next time
+  if (t.all().length || c.all().length) { store.setPref("cloudMigrated", true); return; }
+  const ok = await store.importAll(await store.localSnapshot(), { merge: true });
+  if (ok) { store.setPref("cloudMigrated", true); toast("This device's data is now in the cloud"); }
+}
+/* Owner-triggered: push whatever this device still holds into the cloud (Settings → Data). */
+export async function pushLocalToCloud() {
+  if (store.mode !== "cloud") return { ok: false, error: "Cloud sync isn't connected." };
+  if (!auth.isOwner) return { ok: false, error: "Unlock with your PIN first." };
   const snap = await store.localSnapshot();
-  await store.importAll(snap, { merge: true });
-  store.setPref("cloudMigrated", true);
-  toast("Moved this device's data to the cloud");
+  const n = (snap.collections.tasks || []).length + (snap.collections.commission || []).length;
+  if (!n) return { ok: false, error: "This device has no local data left to upload." };
+  const ok = await store.importAll(snap, { merge: true });
+  if (ok) store.setPref("cloudMigrated", true);
+  return ok ? { ok: true, n } : { ok: false, error: "Upload failed — check the rules in Firebase." };
 }
 
 /* ---------- boot ---------- */
@@ -300,10 +315,19 @@ async function migrateLocalToCloud() {
   PAGES.forEach(p => p.attach?.(ctx()));
   store.onStatus(() => { if (shellBuilt) renderSync(); });
   store.settings.subscribe(() => { if (shellBuilt) { renderNav(); renderGuestBar(); document.title = `${current?.page?.title || ""} — ${profile().workspaceName}`; } });
-  auth.onChange(() => migrateLocalToCloud());
-  migrateLocalToCloud();
+  auth.onChange(() => cloudHousekeeping());
+  cloudHousekeeping();
   render();
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
     navigator.serviceWorker.register("./sw.js").catch(() => {});
+    let reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloading) return;
+      reloading = true;
+      if ($(".scrim")) toast("A new version is ready", { action: "Reload", onAction: () => location.reload(), duration: 20000 });
+      else location.reload();
+    });
+    // check for a new deploy when the tab comes back into view
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) navigator.serviceWorker.getRegistration().then(r => r?.update()).catch(() => {}); });
   }
 })();

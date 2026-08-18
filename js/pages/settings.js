@@ -2,6 +2,7 @@
 import { $, $$, el, esc, icons, toast, modal, confirmDialog, download } from "../ui.js";
 import { readConfig, saveDeviceConfig } from "../store.js";
 import { toBackup } from "../migrate.js";
+import { pushLocalToCloud } from "../app.js";
 import { todayISO } from "../dates.js";
 
 export const id = "settings";
@@ -65,6 +66,7 @@ export function render(r, c) {
             <div class="row wrap"><button type="button" class="btn primary" data-backup>${icons.download}Download backup</button><span class="muted" style="font-size:12.5px">One JSON file with work, ledger, rates and these settings.</span></div>
             <div class="dropzone" data-drop>${icons.upload}<div class="mt-8"><b>Restore or import</b> — drop a file here or click to choose.<br><span style="font-size:12px">Accepts a workspace backup, the old <em>Task Ledger</em> backup, or the old <em>Commission Tracker</em> backup.</span></div><input type="file" accept="application/json,.json" data-file hidden></div>
             <div class="row wrap"><label class="check"><input type="radio" name="impmode" value="merge" checked><span>Merge into what's here</span></label><label class="check"><input type="radio" name="impmode" value="replace"><span>Replace everything</span></label></div>
+            ${cloud ? `<div class="divider" style="margin:2px 0"></div><div class="row wrap"><button type="button" class="btn" data-push>${icons.cloud}Upload this device's data to the cloud</button><span class="muted" style="font-size:12.5px">Only needed if this device once held entries the cloud never received.</span></div>` : ""}
           </div><div class="card-f row wrap"><button type="button" class="btn danger" data-erase>${icons.trash}Erase all work and ledger data</button></div></div>
         </section>
 
@@ -114,6 +116,12 @@ function wire() {
   drop.addEventListener("dragleave", () => drop.classList.remove("over"));
   drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) importFile(f); });
   file.addEventListener("change", e => { const f = e.target.files[0]; if (f) importFile(f); e.target.value = ""; });
+  $("[data-push]", root)?.addEventListener("click", async e => {
+    const b = e.currentTarget; b.disabled = true;
+    const r = await pushLocalToCloud();
+    b.disabled = false;
+    toast(r.ok ? `Uploaded ${r.n} item${r.n === 1 ? "" : "s"} to the cloud` : r.error, { error: !r.ok });
+  });
   $("[data-erase]", root).addEventListener("click", async () => {
     const ok = await confirmDialog({ title: "Erase all work and ledger data?", text: "This removes every task, production, sale and the rate catalog" + (ctx.store.mode === "cloud" ? " from the cloud, on every device." : " from this device.") + " Settings and your PIN stay. Download a backup first if you might want any of it back.", ok: "Erase everything", danger: true });
     if (!ok) return;
@@ -121,7 +129,7 @@ function wire() {
     toast("Erased");
   });
   // appearance
-  const th = ctx.store.pref("theme", "system");
+  const th = ctx.store.pref("theme", "light");
   $$("[data-th]", root).forEach(b => { b.setAttribute("aria-pressed", String(b.dataset.th === th)); b.addEventListener("click", () => { ctx.store.setPref("theme", b.dataset.th); $$("[data-th]", root).forEach(x => x.setAttribute("aria-pressed", String(x === b))); document.dispatchEvent(new Event("fw:theme")); }); });
 }
 

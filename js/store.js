@@ -3,7 +3,7 @@
    cloud  : Firebase Firestore (live sync on every device, offline-capable)
    Pages only ever talk to store.collection(name) / store.doc(name) / store.settings.
 */
-import { uid, nowISO } from "./ui.js";
+import { uid, nowISO, toast } from "./ui.js";
 
 const NS = "fw.ws.v1";
 const FB_VERSION = "12.17.1";
@@ -104,23 +104,32 @@ function cloudCollection(fb, name, setStatus) {
     });
   };
   start();
-  const write = p => { setStatus("saving"); p.catch(e => { console.error(e); setStatus("error"); }); };
+  const write = p => { setStatus("saving"); return p.then(() => true).catch(e => { console.error("[store] write failed", name, e); setStatus("error"); toast(e.code === "permission-denied" ? "Not saved — unlock with your PIN first" : "Not saved — check your connection", { error: true }); return false; }); };
+  const CHUNK = 400;   // Firestore allows 500 operations per batch
+  const commitChunks = async ops => {
+    for (let i = 0; i < ops.length; i += CHUNK) {
+      const batch = fs.writeBatch(db);
+      ops.slice(i, i + CHUNK).forEach(op => op(batch));
+      const ok = await write(batch.commit());
+      if (!ok) return false;
+    }
+    return true;
+  };
   return {
     name, ready, get denied() { return denied; },
     all: () => items.slice(),
     get: id => items.find(x => x.id === id) || null,
-    upsert(item) { const i = items.findIndex(x => x.id === item.id); if (i >= 0) items[i] = item; else items.push(item); ev.emit(items); write(fs.setDoc(fs.doc(ref, item.id), strip(item))); },
+    upsert(item) { const i = items.findIndex(x => x.id === item.id); if (i >= 0) items[i] = item; else items.push(item); ev.emit(items); return write(fs.setDoc(fs.doc(ref, item.id), strip(item))); },
     upsertMany(list) {
-      const batch = fs.writeBatch(db);
-      list.forEach(item => { const i = items.findIndex(x => x.id === item.id); if (i >= 0) items[i] = item; else items.push(item); batch.set(fs.doc(ref, item.id), strip(item)); });
-      ev.emit(items); write(batch.commit());
+      list.forEach(item => { const i = items.findIndex(x => x.id === item.id); if (i >= 0) items[i] = item; else items.push(item); });
+      ev.emit(items);
+      return commitChunks(list.map(item => b => b.set(fs.doc(ref, item.id), strip(item))));
     },
-    remove(id) { items = items.filter(x => x.id !== id); ev.emit(items); write(fs.deleteDoc(fs.doc(ref, id))); },
+    remove(id) { items = items.filter(x => x.id !== id); ev.emit(items); return write(fs.deleteDoc(fs.doc(ref, id))); },
     replaceAll(list) {
-      const batch = fs.writeBatch(db);
-      items.forEach(x => batch.delete(fs.doc(ref, x.id)));
-      list.forEach(x => batch.set(fs.doc(ref, x.id), strip(x)));
-      items = list.slice(); ev.emit(items); write(batch.commit());
+      const ops = [...items.map(x => b => b.delete(fs.doc(ref, x.id))), ...list.map(x => b => b.set(fs.doc(ref, x.id), strip(x)))];
+      items = list.slice(); ev.emit(items);
+      return commitChunks(ops);
     },
     subscribe: ev.subscribe,
     restart: start,
@@ -144,12 +153,12 @@ function cloudDoc(fb, path, setStatus) {
     });
   };
   start();
-  const write = p => { setStatus("saving"); p.catch(e => { console.error(e); setStatus("error"); }); };
+  const write = p => { setStatus("saving"); return p.then(() => true).catch(e => { console.error("[store] write failed", path.join("/"), e); setStatus("error"); toast(e.code === "permission-denied" ? "Not saved — unlock with your PIN first" : "Not saved — check your connection", { error: true }); return false; }); };
   return {
     name: path.join("/"), ready, get denied() { return denied; },
     get: () => data,
-    set(patch) { data = { ...data, ...patch }; ev.emit(data); write(fs.setDoc(ref, strip(patch), { merge: true })); },
-    replace(obj) { data = { ...obj }; ev.emit(data); write(fs.setDoc(ref, strip(obj))); },
+    set(patch) { data = { ...data, ...patch }; ev.emit(data); return write(fs.setDoc(ref, strip(patch), { merge: true })); },
+    replace(obj) { data = { ...obj }; ev.emit(data); return write(fs.setDoc(ref, strip(obj))); },
     subscribe: ev.subscribe,
     restart: start,
   };
@@ -248,12 +257,14 @@ class Store {
   }
   async importAll(data, { merge = true } = {}) {
     if (!data || data.app !== "flowork-workspace") throw new Error("Not a workspace backup");
-    if (data.settings && Object.keys(data.settings).length) this.settings.set(data.settings);
-    for (const [n, v] of Object.entries(data.docs || {})) { const d = this.doc(n); await d.ready; merge ? d.set(v) : d.replace(v); }
+    const results = [];
+    if (data.settings && Object.keys(data.settings).length) results.push(await this.settings.set(data.settings));
+    for (const [n, v] of Object.entries(data.docs || {})) { const d = this.doc(n); await d.ready; results.push(await (merge ? d.set(v) : d.replace(v))); }
     for (const [n, list] of Object.entries(data.collections || {})) {
       const c = this.collection(n); await c.ready;
-      if (merge) c.upsertMany(list); else c.replaceAll(list);
+      results.push(await (merge ? c.upsertMany(list) : c.replaceAll(list)));
     }
+    return results.every(r => r !== false);   // local adapter returns undefined = fine
   }
   /* copy everything held locally into the cloud (first connection) */
   async localSnapshot() {
