@@ -55,16 +55,13 @@ export const auth = {
           const owner = !!user && (!this.ownerEmail || (user.email || "").toLowerCase() === this.ownerEmail.toLowerCase());
           if (owner) this.state = "owner";
           else if (this.state === "owner") this.state = "locked";
-          if (!owner && sessionStorage.getItem("fw.guest") === "1") this.state = "guest";
           if (!first) store.resubscribe();
           first = false;
           emit(); resolve();
         });
       });
-    } else {
-      if (this.hasPin() && sessionStorage.getItem("fw.unlocked") === "1") this.state = "owner";
-      else if (sessionStorage.getItem("fw.guest") === "1") this.state = "guest";
     }
+    // no unlocked state is ever restored from storage: the workspace always opens on the PIN screen
     this._wireIdle();
     return this.state;
   },
@@ -85,11 +82,10 @@ export const auth = {
       const { auth: fa, authMod } = store.fb;
       if (!this.ownerEmail) return { ok: false, error: "Add the owner email in Settings → Cloud first." };
       try {
-        // session-only: close the tab or the app and the PIN is required again
-        await authMod.setPersistence(fa, authMod.browserSessionPersistence);
+        // in-memory only: every page load (open, refresh, reopen) asks for the PIN again
+        await authMod.setPersistence(fa, authMod.inMemoryPersistence);
         await authMod.signInWithEmailAndPassword(fa, this.ownerEmail, pin);
         try { await fa.authStateReady?.(); } catch {}
-        sessionStorage.removeItem("fw.guest");
         this.preview = false; this.state = "owner"; emit(); store.resubscribe();
         return { ok: true };
       } catch (e) {
@@ -100,24 +96,18 @@ export const auth = {
     if (!rec) return { ok: false, error: "No PIN set yet." };
     const ok = (await sha256(rec.salt + pin)) === rec.hash;
     if (!ok) return { ok: false, error: "That PIN isn't right." };
-    sessionStorage.setItem("fw.unlocked", "1"); sessionStorage.removeItem("fw.guest");
     this.preview = false; this.state = "owner"; emit();
     return { ok: true };
   },
 
   async lock() {
     if (store.mode === "cloud") { try { await store.fb.authMod.signOut(store.fb.auth); } catch {} }
-    sessionStorage.removeItem("fw.unlocked"); sessionStorage.removeItem("fw.guest");
     this.preview = false; this.state = "locked"; emit();
     if (store.mode === "cloud") store.resubscribe();
   },
 
-  enterGuest() {
-    sessionStorage.setItem("fw.guest", "1");
-    if (this.state !== "owner") this.state = "guest";
-    emit();
-  },
-  leaveGuest() { sessionStorage.removeItem("fw.guest"); if (this.state === "guest") this.state = "locked"; emit(); },
+  enterGuest() { if (this.state !== "owner") this.state = "guest"; emit(); },
+  leaveGuest() { if (this.state === "guest") this.state = "locked"; emit(); },
 
   setPreview(on) { if (this.state !== "owner") return; this.preview = !!on; emit(); },
 

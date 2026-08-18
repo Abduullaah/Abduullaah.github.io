@@ -198,7 +198,7 @@ function renderLock() {
       ${!needsSetup && auth.anyPublicPage() ? `<button type="button" data-guest>Continue as a guest ${icons.arrowUpRight}</button>` : ""}
       ${!needsSetup ? `<button type="button" data-forgot class="muted" style="font-weight:400">Forgot your PIN?</button>` : ""}
     </div>
-    <div class="foot">${modeNote} · PIN required every time${store.mode === "cloud" && store.config.source === "device" ? ` · <button type="button" data-cloud-off style="font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;text-decoration:underline;text-underline-offset:2px">use this device without cloud</button>` : ""}${store.status === "error" && store.mode === "cloud" ? `<div style="margin-top:8px;color:var(--bad)">Can't reach the cloud project — check the config or your connection.</div>` : ""}</div>
+    <div class="foot">${modeNote} · PIN required on every visit${store.mode === "cloud" && store.config.source === "device" ? ` · <button type="button" data-cloud-off style="font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;text-decoration:underline;text-underline-offset:2px">use this device without cloud</button>` : ""}${store.status === "error" && store.mode === "cloud" ? `<div style="margin-top:8px;color:var(--bad)">Can't reach the cloud project — check the config or your connection.</div>` : ""}</div>
   </div></div>`;
   applyTheme();
   $("[data-cloud-off]", app)?.addEventListener("click", async () => {
@@ -318,12 +318,12 @@ export async function pushLocalToCloud() {
   render();
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
     navigator.serviceWorker.register("./sw.js").catch(() => {});
-    let reloading = false;
+    let announced = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (reloading) return;
-      reloading = true;
-      if ($(".scrim")) toast("A new version is ready", { action: "Reload", onAction: () => location.reload(), duration: 20000 });
-      else location.reload();
+      if (announced) return;
+      announced = true;
+      // never reload on our own: a reload means entering the PIN again
+      toast("A new version is ready", { action: "Reload now", onAction: () => location.reload(), duration: 30000 });
     });
     // check for a new deploy when the tab comes back into view
     document.addEventListener("visibilitychange", () => { if (!document.hidden) navigator.serviceWorker.getRegistration().then(r => r?.update()).catch(() => {}); });
