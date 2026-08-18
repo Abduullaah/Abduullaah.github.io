@@ -194,12 +194,11 @@ function renderLock() {
       <button type="button" class="fn" data-k="back" aria-label="Delete">${icons.back}</button>
     </div>
     <div class="msg" data-msg aria-live="polite"></div>
-    ${needsSetup ? "" : `<label class="switch keep"><input type="checkbox" data-keep ${store.pref("keepUnlocked", true) !== false ? "checked" : ""}><span class="track"></span><span class="lbl">Keep me unlocked on this device</span></label>`}
     <div class="links">
       ${!needsSetup && auth.anyPublicPage() ? `<button type="button" data-guest>Continue as a guest ${icons.arrowUpRight}</button>` : ""}
       ${!needsSetup ? `<button type="button" data-forgot class="muted" style="font-weight:400">Forgot your PIN?</button>` : ""}
     </div>
-    <div class="foot">${modeNote}${store.mode === "cloud" && store.config.source === "device" ? ` · <button type="button" data-cloud-off style="font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;text-decoration:underline;text-underline-offset:2px">use this device without cloud</button>` : ""}${store.status === "error" && store.mode === "cloud" ? `<div style="margin-top:8px;color:var(--bad)">Can't reach the cloud project — check the config or your connection.</div>` : ""}</div>
+    <div class="foot">${modeNote} · PIN required every time${store.mode === "cloud" && store.config.source === "device" ? ` · <button type="button" data-cloud-off style="font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;text-decoration:underline;text-underline-offset:2px">use this device without cloud</button>` : ""}${store.status === "error" && store.mode === "cloud" ? `<div style="margin-top:8px;color:var(--bad)">Can't reach the cloud project — check the config or your connection.</div>` : ""}</div>
   </div></div>`;
   applyTheme();
   $("[data-cloud-off]", app)?.addEventListener("click", async () => {
@@ -220,13 +219,12 @@ function renderLock() {
       if (firstPin !== buf) { firstPin = null; prompt.textContent = "Create your PIN"; fail("Those didn't match. Start again."); busy = false; return; }
       await auth.setupPin(buf);
       dots.classList.add("ok");
-      await auth.unlock(buf, true);
+      await auth.unlock(buf);
       toast("PIN set. Welcome in.");
       setTimeout(render, 220); return;
     }
-    const keep = $("[data-keep]", app)?.checked ?? true;
     say("Checking…");
-    const r = await auth.unlock(buf, keep);
+    const r = await auth.unlock(buf);
     if (r.ok) { dots.classList.add("ok"); say(""); setTimeout(render, 220); }
     else { fail(r.error); busy = false; }
   }
@@ -262,7 +260,7 @@ async function forgotPin() {
   }
   const ok = await confirmDialog({ title: "Reset PIN and this device's data?", text: "In device mode there is no way to recover a lost PIN. Resetting removes the PIN and every entry stored on this device. If you have a backup file you can restore it afterwards.", ok: "Reset everything", danger: true });
   if (!ok) return;
-  store.wipeLocalData(); store.setPref("pin", null); store.setPref("keepUnlocked", null); store.setPref("seeded", null);
+  store.wipeLocalData(); store.setPref("pin", null); store.setPref("seeded", null);
   toast("Reset. Create a new PIN.");
   render();
 }

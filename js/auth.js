@@ -62,8 +62,7 @@ export const auth = {
         });
       });
     } else {
-      const keep = store.pref("keepUnlocked", false);
-      if (this.hasPin() && (keep || sessionStorage.getItem("fw.unlocked") === "1")) this.state = "owner";
+      if (this.hasPin() && sessionStorage.getItem("fw.unlocked") === "1") this.state = "owner";
       else if (sessionStorage.getItem("fw.guest") === "1") this.state = "guest";
     }
     this._wireIdle();
@@ -81,12 +80,13 @@ export const auth = {
     return true;
   },
 
-  async unlock(pin, keep = true) {
+  async unlock(pin) {
     if (store.mode === "cloud") {
       const { auth: fa, authMod } = store.fb;
       if (!this.ownerEmail) return { ok: false, error: "Add the owner email in Settings → Cloud first." };
       try {
-        await authMod.setPersistence(fa, keep ? authMod.browserLocalPersistence : authMod.browserSessionPersistence);
+        // session-only: close the tab or the app and the PIN is required again
+        await authMod.setPersistence(fa, authMod.browserSessionPersistence);
         await authMod.signInWithEmailAndPassword(fa, this.ownerEmail, pin);
         try { await fa.authStateReady?.(); } catch {}
         sessionStorage.removeItem("fw.guest");
@@ -100,7 +100,6 @@ export const auth = {
     if (!rec) return { ok: false, error: "No PIN set yet." };
     const ok = (await sha256(rec.salt + pin)) === rec.hash;
     if (!ok) return { ok: false, error: "That PIN isn't right." };
-    store.setPref("keepUnlocked", !!keep);
     sessionStorage.setItem("fw.unlocked", "1"); sessionStorage.removeItem("fw.guest");
     this.preview = false; this.state = "owner"; emit();
     return { ok: true };
@@ -108,7 +107,6 @@ export const auth = {
 
   async lock() {
     if (store.mode === "cloud") { try { await store.fb.authMod.signOut(store.fb.auth); } catch {} }
-    store.setPref("keepUnlocked", null);
     sessionStorage.removeItem("fw.unlocked"); sessionStorage.removeItem("fw.guest");
     this.preview = false; this.state = "locked"; emit();
     if (store.mode === "cloud") store.resubscribe();
