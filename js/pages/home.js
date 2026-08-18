@@ -69,7 +69,7 @@ function paint() {
         <h1 class="greet">${owner ? `${esc(greetingFor())}, <em>${esc(p.name.split(" ")[0])}</em>.` : `<em>${esc(p.name.split(" ")[0])}</em>'s desk.`}</h1>
         <div class="today"><span>${DAYF[td.getDay()]} ${td.getDate()} ${MONF[td.getMonth()]} ${td.getFullYear()}</span><span class="num muted">Week ${weekNo(td)}</span></div>
       </div>
-      ${owner ? `<div class="row wrap"><button type="button" class="btn" data-quick>${icons.spark}Quick capture</button>${canLedger ? `<button type="button" class="btn primary" data-sale>${icons.plus}Log a sale</button>` : ""}</div>` : ""}
+      ${owner ? `<div class="row wrap"><button type="button" class="btn" data-newtask>${icons.plus}New task</button>${canLedger ? `<button type="button" class="btn primary" data-sale>${icons.plus}Log a sale</button>` : ""}</div>` : ""}
     </div>
 
     <div class="stats">
@@ -84,7 +84,7 @@ function paint() {
     <div class="ov-grid mt-24">
       ${canWork ? `<div class="card">
         <div class="card-h"><h2>What's on</h2><a href="#/tasks">Open Tasks</a></div>
-        <div class="ov-list">${focus.length ? focus.map(line).join("") : `<div class="tbl-empty" style="padding:32px 20px">Clear desk — nothing due today, nothing past due.${owner ? " Capture something with <b>Q</b>." : ""}</div>`}</div>
+        <div class="ov-list">${focus.length ? focus.map(line).join("") : `<div class="tbl-empty" style="padding:32px 20px">Clear desk — nothing due today, nothing past due.</div>`}</div>
       </div>` : ""}
       <div class="stack gap-24">
         ${canLedger ? `<div class="card">
@@ -117,7 +117,7 @@ function paint() {
     ${!canWork && !canLedger ? `<div class="card"><div class="card-b muted">Nothing is shared here yet.</div></div>` : ""}`;
 
   $$("[data-count]", root).forEach(n => countUp(n, num(n.dataset.count), fmtMoney, 500));
-  $("[data-quick]", root)?.addEventListener("click", () => work.quickCapture());
+  $("[data-newtask]", root)?.addEventListener("click", () => work.openEditor(null));
   $("[data-sale]", root)?.addEventListener("click", () => ledger.openEditor(null));
   $$("[data-task]", root).forEach(n => n.addEventListener("click", () => { if (owner) work.openEditor(n.dataset.task); else ctx.navigate("tasks"); }));
 }

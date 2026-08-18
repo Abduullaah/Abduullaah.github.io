@@ -66,49 +66,8 @@ export function applyStage(t, stage) { t.stage = stage; return applyStatus(t, ST
 export function saveTask(t) { col.upsert(t); }
 export function collection() { return col; }
 
-/* ---------- quick capture: "Office walk-in video @Rania !high next week #content" ---------- */
-export function parseQuick(text) {
-  let s = " " + text.trim() + " ";
-  const t = { givenBy: "", priority: "Medium", tags: [], dateMode: "week", date: iso(monday(new Date())), kind: "task" };
-  s = s.replace(/\s@([\w'-]+)/g, (_, n) => { t.givenBy = n; return " "; });
-  s = s.replace(/\s!(high|h|urgent)\b/i, () => { t.priority = "High"; return " "; }).replace(/\s!(med|medium|m)\b/i, () => { t.priority = "Medium"; return " "; }).replace(/\s!(low|l)\b/i, () => { t.priority = "Low"; return " "; });
-  s = s.replace(/\s#([\w-]+)/g, (_, tag) => { t.tags.push(tag[0].toUpperCase() + tag.slice(1)); return " "; });
-  const td = today();
-  const dayIdx = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
-  s = s.replace(/\s(today|tomorrow|next week|this week|ongoing|no date|on (mon|tue|wed|thu|fri|sat|sun)[a-z]*)\s/i, (m0, w, dn) => {
-    const k = w.toLowerCase();
-    if (k === "today") { t.dateMode = "day"; t.date = iso(td); }
-    else if (k === "tomorrow") { t.dateMode = "day"; t.date = iso(addDays(td, 1)); }
-    else if (k === "next week") { t.dateMode = "week"; t.date = iso(addDays(monday(td), 7)); }
-    else if (k === "this week") { t.dateMode = "week"; t.date = iso(monday(td)); }
-    else if (k === "ongoing" || k === "no date") { t.dateMode = "none"; t.date = null; }
-    else if (dn) { const want = dayIdx[dn.toLowerCase()]; let d = addDays(td, 1); while (d.getDay() !== want) d = addDays(d, 1); t.dateMode = "day"; t.date = iso(d); }
-    return " ";
-  });
-  t.title = s.replace(/\s+/g, " ").trim();
-  if (PROD_RE.test(t.title)) { t.kind = "production"; t.stage = "Brief"; }
-  return t;
-}
-export function quickCapture(onDone) {
-  if (!ctx?.auth?.isOwner) return;
-  const body = el(`<div class="stack gap-12">
-    <input class="inp lg" data-qc placeholder="Office walk-in video @Rania !high next week #content" autocomplete="off" autofocus style="height:46px;font-size:15px">
-    <div class="mono muted" data-qc-prev style="font-size:12px;min-height:18px"></div>
-    <p class="hint"><b>@name</b> given by · <b>!high !low</b> priority · <b>#tag</b> · <b>today</b>, <b>tomorrow</b>, <b>next week</b>, <b>on fri</b>, <b>ongoing</b>. Video work is filed as a production automatically.</p>
-  </div>`);
-  const foot = el(`<div class="row" style="width:100%"><button type="button" class="btn primary" data-add>Add to Work</button><button type="button" class="btn ghost" data-open>Open full editor</button></div>`);
-  const m = modal({ title: "Quick capture", body, footer: foot, size: "narrow" });
-  const inp = $("[data-qc]", body), prev = $("[data-qc-prev]", body);
-  const paintPrev = () => { const p = parseQuick(inp.value); prev.textContent = inp.value.trim() ? `${p.kind === "production" ? "Production" : "Task"} · ${p.priority} · ${p.givenBy ? "from " + p.givenBy + " · " : ""}${p.dateMode === "none" ? "Ongoing" : p.dateMode === "day" ? dayShort(p.date) : "week of " + dmy(p.date)}${p.tags.length ? " · " + p.tags.join(", ") : ""}` : ""; };
-  inp.addEventListener("input", paintPrev);
-  const build = () => { const p = parseQuick(inp.value); if (!p.title) { inp.classList.add("err"); inp.focus(); return null; } return newTask(p); };
-  $("[data-add]", foot).addEventListener("click", () => { const t = build(); if (!t) return; col.upsert(t); m.close(); toast(`Added “${t.title}”`); onDone?.(t); });
-  $("[data-open]", foot).addEventListener("click", () => { const t = build(); if (!t) return; m.close(); openEditor(null, t); });
-  inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("[data-add]", foot).click(); } });
-}
-
 /* ---------- lifecycle ---------- */
-/* attach() lets other pages open the editor / quick capture before this page has rendered */
+/* attach() lets other pages open the task editor before this page has rendered */
 export function attach(c) { ctx = c; col = ctx.store.collection("tasks"); }
 export function render(r, c) {
   attach(c); root = r;
@@ -225,9 +184,8 @@ function paint() {
   const doneWeek = all().filter(t => t.status === "Completed" && t.completedAt && t.completedAt.slice(0, 10) >= wa && t.completedAt.slice(0, 10) <= wb).length;
   const late = all().filter(isLate).length;
   $("[data-sub]", root).innerHTML = `${open} open · ${doneWeek} completed this week${late ? ` · <span style="color:var(--bad)">${late} past due</span>` : ""}`;
-  $("[data-actions]", root).innerHTML = owner ? `<button type="button" class="btn" data-quick title="Quick capture (Q)">${icons.spark}<span class="hide-mobile">Quick</span></button><button type="button" class="btn primary" data-new>${icons.plus}New</button>` : "";
+  $("[data-actions]", root).innerHTML = owner ? `<button type="button" class="btn primary" data-new>${icons.plus}New task</button>` : "";
   $("[data-new]", root)?.addEventListener("click", () => openEditor(null));
-  $("[data-quick]", root)?.addEventListener("click", () => quickCapture());
   $("[data-boardby]", root).hidden = view !== "board";
   $("[data-more-menu]", root).hidden = !owner;
   $$("[data-tab]", root).forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
@@ -235,9 +193,8 @@ function paint() {
   $("[data-filters]", root).hidden = tab !== "work" || !showFilters;
   $("[data-subtabs-wrap]", root);
   if (tab === "people") {
-    $("[data-actions]", root).innerHTML = owner ? `<button type="button" class="btn" data-quick title="Quick capture (Q)">${icons.spark}<span class="hide-mobile">Quick</span></button><button type="button" class="btn primary" data-new>${icons.plus}New</button>` : "";
+    $("[data-actions]", root).innerHTML = owner ? `<button type="button" class="btn primary" data-new>${icons.plus}New task</button>` : "";
     $("[data-new]", root)?.addEventListener("click", () => openEditor(null));
-    $("[data-quick]", root)?.addEventListener("click", () => quickCapture());
     $("[data-content]", root).innerHTML = renderPeople();
     return;
   }

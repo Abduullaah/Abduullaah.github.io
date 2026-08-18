@@ -53,7 +53,6 @@ function buildShell() {
         <div class="brand"><span class="word">flowork<i>.</i></span></div>
         <div class="brand-sub" data-ws-name></div>
         <nav class="nav" data-nav aria-label="Pages"></nav>
-        <button type="button" class="btn block" data-quick style="margin-top:14px;justify-content:flex-start;gap:10px;color:var(--ink-2)" hidden>${icons.spark}<span>Quick capture</span><span class="mono muted" style="margin-left:auto;font-size:10.5px">Q</span></button>
         <div class="sidebar-foot">
           <div class="sync" data-sync><span class="dot"></span><span class="txt">…</span></div>
           <div class="foot-row">
@@ -81,7 +80,6 @@ function buildShell() {
   $$("[data-theme-toggle]", app).forEach(b => b.addEventListener("click", toggleTheme));
   $$("[data-lock-btn]", app).forEach(b => b.addEventListener("click", onLockClick));
   $("[data-go=settings]", app).addEventListener("click", () => navigate("settings"));
-  $("[data-quick]", app).addEventListener("click", () => tasks.quickCapture());
   shellBuilt = true;
   applyTheme();
 }
@@ -104,7 +102,6 @@ function renderNav() {
     b.setAttribute("aria-label", b.title);
   });
   $("[data-go=settings]", app).hidden = !auth.isOwner;
-  $("[data-quick]", app).hidden = !auth.isOwner;
 }
 
 function renderGuestBar() {
@@ -164,7 +161,6 @@ const ctx = () => ({ store, auth, navigate, profile, render });
 document.addEventListener("keydown", e => {
   if (e.metaKey || e.ctrlKey || e.altKey || auth.state !== "owner" || auth.preview) return;
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || $(".scrim")) return;
-  if (e.key === "q" || e.key === "Q") { e.preventDefault(); tasks.quickCapture(); }
   if (e.key === "g") { window._g = Date.now(); return; }
   if (window._g && Date.now() - window._g < 800) { const map = { h: "home", t: "tasks", c: "commission", s: "settings" }; if (map[e.key]) { e.preventDefault(); navigate(map[e.key]); } window._g = 0; }
 });

@@ -1,5 +1,5 @@
 /* sw.js — offline shell. Network first for app files (so updates arrive), cache fallback offline. */
-const CACHE = "backstage-v2";
+const CACHE = "backstage-v3";
 const CORE = ["./", "./index.html", "./css/app.css", "./config.js", "./manifest.webmanifest",
   "./js/app.js", "./js/ui.js", "./js/dates.js", "./js/store.js", "./js/auth.js", "./js/migrate.js",
   "./js/pages/home.js", "./js/pages/tasks.js", "./js/pages/commission.js", "./js/pages/settings.js",

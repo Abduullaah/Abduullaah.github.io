@@ -74,7 +74,7 @@ export function render(r, c) {
 
         <section class="settings-sec" id="s-about"><h2>About</h2>
           <div class="card"><div class="card-b">
-            <dl class="kv"><dt>Version</dt><dd class="mono">${VERSION}</dd><dt>Storage</dt><dd><span class="badge-mode ${cloud ? "cloud" : "local"}">${cloud ? "Cloud · Firestore" : "This device"}</span></dd><dt>Shortcuts</dt><dd class="mono" style="font-size:12.5px">Q quick capture · N new · / search · Esc close</dd><dt>Install</dt><dd style="font-size:13.5px">On iPhone: Share → Add to Home Screen. On Android/desktop Chrome: Install app from the address bar. Works offline; syncs when back.</dd></dl>
+            <dl class="kv"><dt>Version</dt><dd class="mono">${VERSION}</dd><dt>Storage</dt><dd><span class="badge-mode ${cloud ? "cloud" : "local"}">${cloud ? "Cloud · Firestore" : "This device"}</span></dd><dt>Shortcuts</dt><dd class="mono" style="font-size:12.5px">N new · / search · g then h/t/c/s to jump · Esc close</dd><dt>Install</dt><dd style="font-size:13.5px">On iPhone: Share → Add to Home Screen. On Android/desktop Chrome: Install app from the address bar. Works offline; syncs when back.</dd></dl>
           </div></div>
         </section>
       </div>
