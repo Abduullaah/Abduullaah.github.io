@@ -63,11 +63,11 @@ export function render(r, c) {
 
         <section class="settings-sec" id="s-data"><h2>Data</h2><p class="lead">Your data is yours. Back it up any time, restore it anywhere, or bring in the two original trackers.</p>
           <div class="card"><div class="card-b stack gap-16">
-            <div class="row wrap"><button type="button" class="btn primary" data-backup>${icons.download}Download backup</button><span class="muted" style="font-size:12.5px">One JSON file with work, ledger, rates and these settings.</span></div>
+            <div class="row wrap"><button type="button" class="btn primary" data-backup>${icons.download}Download backup</button><span class="muted" style="font-size:12.5px">One JSON file with work, sessions, ledger, rates and these settings.</span></div>
             <div class="dropzone" data-drop>${icons.upload}<div class="mt-8"><b>Restore or import</b> — drop a file here or click to choose.<br><span style="font-size:12px">Accepts a workspace backup, the old <em>Task Ledger</em> backup, or the old <em>Commission Tracker</em> backup.</span></div><input type="file" accept="application/json,.json" data-file hidden></div>
             <div class="row wrap"><label class="check"><input type="radio" name="impmode" value="merge" checked><span>Merge into what's here</span></label><label class="check"><input type="radio" name="impmode" value="replace"><span>Replace everything</span></label></div>
             ${cloud ? `<div class="divider" style="margin:2px 0"></div><div class="row wrap"><button type="button" class="btn" data-push>${icons.cloud}Upload this device's data to the cloud</button><span class="muted" style="font-size:12.5px">Only needed if this device once held entries the cloud never received.</span></div>` : ""}
-          </div><div class="card-f row wrap"><button type="button" class="btn danger" data-erase>${icons.trash}Erase all work and ledger data</button></div></div>
+          </div><div class="card-f row wrap"><button type="button" class="btn danger" data-erase>${icons.trash}Erase all work, session and ledger data</button></div></div>
         </section>
 
         <section class="settings-sec" id="s-appearance"><h2>Appearance</h2>
@@ -76,7 +76,7 @@ export function render(r, c) {
 
         <section class="settings-sec" id="s-about"><h2>About</h2>
           <div class="card"><div class="card-b">
-            <dl class="kv"><dt>Version</dt><dd class="mono">${VERSION}</dd><dt>Storage</dt><dd><span class="badge-mode ${cloud ? "cloud" : "local"}">${cloud ? "Cloud · Firestore" : "This device"}</span></dd><dt>Shortcuts</dt><dd class="mono" style="font-size:12.5px">N new · / search · g then h/t/c/s to jump · Esc close</dd><dt>Install</dt><dd style="font-size:13.5px">On iPhone: Share → Add to Home Screen. On Android/desktop Chrome: Install app from the address bar. Works offline; syncs when back.</dd></dl>
+            <dl class="kv"><dt>Version</dt><dd class="mono">${VERSION}</dd><dt>Storage</dt><dd><span class="badge-mode ${cloud ? "cloud" : "local"}">${cloud ? "Cloud · Firestore" : "This device"}</span></dd><dt>Shortcuts</dt><dd class="mono" style="font-size:12.5px">N new · / search · g then h/t/p/c/s to jump · Esc close</dd><dt>Install</dt><dd style="font-size:13.5px">On iPhone: Share → Add to Home Screen. On Android/desktop Chrome: Install app from the address bar. Works offline; syncs when back.</dd></dl>
           </div></div>
         </section>
       </div>
@@ -123,9 +123,9 @@ function wire() {
     toast(r.ok ? `Uploaded ${r.n} item${r.n === 1 ? "" : "s"} to the cloud` : r.error, { error: !r.ok });
   });
   $("[data-erase]", root).addEventListener("click", async () => {
-    const ok = await confirmDialog({ title: "Erase all work and ledger data?", text: "This removes every task, production, sale and the rate catalog" + (ctx.store.mode === "cloud" ? " from the cloud, on every device." : " from this device.") + " Settings and your PIN stay. Download a backup first if you might want any of it back.", ok: "Erase everything", danger: true });
+    const ok = await confirmDialog({ title: "Erase all work, session and ledger data?", text: "This removes every task, production, session, sale and the rate catalog" + (ctx.store.mode === "cloud" ? " from the cloud, on every device." : " from this device.") + " Settings and your PIN stay. Download a backup first if you might want any of it back.", ok: "Erase everything", danger: true });
     if (!ok) return;
-    ctx.store.collection("tasks").replaceAll([]); ctx.store.collection("commission").replaceAll([]); ctx.store.doc("commission").replace({});
+    ctx.store.collection("tasks").replaceAll([]); ctx.store.collection("sessions").replaceAll([]); ctx.store.collection("commission").replaceAll([]); ctx.store.doc("commission").replace({});
     toast("Erased");
   });
   // appearance
@@ -138,11 +138,11 @@ async function importFile(f) {
     const raw = JSON.parse(await f.text());
     const backup = toBackup(raw);
     const mode = $('input[name="impmode"]:checked', root).value;
-    const nT = (backup.collections?.tasks || []).length, nC = (backup.collections?.commission || []).length;
-    const ok = await confirmDialog({ title: mode === "replace" ? "Replace everything with this file?" : "Import this file?", text: `${f.name}: ${nT} work item${nT === 1 ? "" : "s"}, ${nC} sale${nC === 1 ? "" : "s"}${backup.docs?.commission ? ", rate catalog" : ""}${Object.keys(backup.settings || {}).length ? ", settings" : ""}. ${mode === "replace" ? "Existing items are removed first." : "Existing items with the same id are updated, everything else is kept."}`, ok: mode === "replace" ? "Replace" : "Import" });
+    const nT = (backup.collections?.tasks || []).length, nC = (backup.collections?.commission || []).length, nS = (backup.collections?.sessions || []).length;
+    const ok = await confirmDialog({ title: mode === "replace" ? "Replace everything with this file?" : "Import this file?", text: `${f.name}: ${nT} work item${nT === 1 ? "" : "s"}, ${nS} session${nS === 1 ? "" : "s"}, ${nC} sale${nC === 1 ? "" : "s"}${backup.docs?.commission ? ", rate catalog" : ""}${Object.keys(backup.settings || {}).length ? ", settings" : ""}. ${mode === "replace" ? "Existing items are removed first." : "Existing items with the same id are updated, everything else is kept."}`, ok: mode === "replace" ? "Replace" : "Import" });
     if (!ok) return;
     await ctx.store.importAll(backup, { merge: mode !== "replace" });
-    toast(`Imported ${nT + nC} item${nT + nC === 1 ? "" : "s"}`);
+    toast(`Imported ${nT + nS + nC} item${nT + nS + nC === 1 ? "" : "s"}`);
   } catch (e) { console.error(e); toast("That file isn't a backup this workspace understands", { error: true }); }
 }
 
@@ -155,10 +155,11 @@ function paintDynamic() {
   $("[data-vis]", root).innerHTML =
     rowV("home", "Home", "The preview page: what is on, this week, and figures for whatever else is shared.") +
     rowV("tasks", "Tasks", "Tasks and productions week by week, plus the People subtab.", sw("tasksPeople", "Show who gave each task", "Names of colleagues in Given by") + sw("tasksNotes", "Show notes", "Blockers and comments")) +
+    rowV("sessions", "Sessions", "Podcast shoots: date, client, location, hours and editing.", sw("sessionsClients", "Show client names", "Off: clients appear as “Client”")) +
     rowV("commission", "Commission", "Sales and commission. Off by default — this is your money.", sw("commissionAmounts", "Show amounts", "Off: guests only see counts and statuses") + sw("commissionClients", "Show client names", "Off: clients appear as “Client”"));
   $$("[data-vis]", root).forEach(i => i.addEventListener("change", () => { ctx.store.settings.set({ visibility: { ...ctx.auth.vis(), [i.dataset.vis]: i.checked } }); }));
-  const on = ["home", "tasks", "commission"].filter(k => vis[k]);
-  $("[data-vis-summary]", root).textContent = on.length ? `Guests see: ${on.map(k => ({ home: "Home", tasks: "Tasks", commission: "Commission" })[k]).join(", ")}` : "Guests see nothing — the link only shows the PIN screen.";
+  const on = ["home", "tasks", "sessions", "commission"].filter(k => vis[k]);
+  $("[data-vis-summary]", root).textContent = on.length ? `Guests see: ${on.map(k => ({ home: "Home", tasks: "Tasks", sessions: "Sessions", commission: "Commission" })[k]).join(", ")}` : "Guests see nothing — the link only shows the PIN screen.";
   paintCloud();
 }
 

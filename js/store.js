@@ -254,7 +254,7 @@ class Store {
   setPref(key, v) { if (v === null || v === undefined) localStorage.removeItem(`${NS}:pref:${key}`); else lsSet(`${NS}:pref:${key}`, v); }
 
   /* ---------- backup / restore ---------- */
-  async exportAll(names = { collections: ["tasks", "commission"], docs: ["commission", "tasks"] }) {
+  async exportAll(names = { collections: ["tasks", "sessions", "commission"], docs: ["commission", "sessions", "tasks"] }) {
     const out = { app: "flowork-workspace", version: 1, exportedAt: nowISO(), settings: this.settings?.get() || {}, docs: {}, collections: {} };
     for (const n of names.docs) { const d = this.doc(n); await d.ready; out.docs[n] = d.get(); }
     for (const n of names.collections) { const c = this.collection(n); await c.ready; out.collections[n] = c.all(); }
@@ -273,12 +273,12 @@ class Store {
   }
   /* copy everything held locally into the cloud (first connection) */
   async localSnapshot() {
-    const names = ["tasks", "commission"];
+    const names = ["tasks", "sessions", "commission"];
     const out = { app: "flowork-workspace", version: 1, exportedAt: nowISO(), settings: lsGet(lsKey("settings", "settings"), {}), docs: {}, collections: {} };
     names.forEach(n => { out.docs[n] = lsGet(lsKey("doc", n), {}); out.collections[n] = lsGet(lsKey("col", n), []); });
     return out;
   }
-  localHasData() { return ["tasks", "commission"].some(n => (lsGet(lsKey("col", n), []) || []).length > 0); }
+  localHasData() { return ["tasks", "sessions", "commission"].some(n => (lsGet(lsKey("col", n), []) || []).length > 0); }
   wipeLocalData() {
     Object.keys(localStorage).filter(k => k.startsWith(NS + ":col:") || k.startsWith(NS + ":doc:") || k.startsWith(NS + ":settings:")).forEach(k => localStorage.removeItem(k));
   }

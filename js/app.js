@@ -5,11 +5,12 @@ import { auth } from "./auth.js";
 import { relTime } from "./dates.js";
 import * as home from "./pages/home.js";
 import * as tasks from "./pages/tasks.js";
+import * as sessions from "./pages/sessions.js";
 import * as commission from "./pages/commission.js";
 import * as settings from "./pages/settings.js";
 
 /* ---------- page registry (add a page: import it and list it here) ---------- */
-export const PAGES = [home, tasks, commission, settings];
+export const PAGES = [home, tasks, sessions, commission, settings];
 
 const app = $("#app");
 let current = null;   // { page, root }
@@ -162,7 +163,7 @@ document.addEventListener("keydown", e => {
   if (e.metaKey || e.ctrlKey || e.altKey || auth.state !== "owner" || auth.preview) return;
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || $(".scrim")) return;
   if (e.key === "g") { window._g = Date.now(); return; }
-  if (window._g && Date.now() - window._g < 800) { const map = { h: "home", t: "tasks", c: "commission", s: "settings" }; if (map[e.key]) { e.preventDefault(); navigate(map[e.key]); } window._g = 0; }
+  if (window._g && Date.now() - window._g < 800) { const map = { h: "home", t: "tasks", p: "sessions", c: "commission", s: "settings" }; if (map[e.key]) { e.preventDefault(); navigate(map[e.key]); } window._g = 0; }
 });
 
 function renderNothingShared() {

@@ -2,10 +2,10 @@
    App files: always fetched fresh from the network, bypassing the browser's HTTP cache
    (GitHub Pages sets max-age=600, which would otherwise serve a stale app for 10 minutes).
    The cache is only a fallback for when you are offline. */
-const CACHE = "backstage-v9";
+const CACHE = "backstage-v10";
 const CORE = ["./", "./index.html", "./css/app.css", "./config.js", "./manifest.webmanifest",
   "./js/app.js", "./js/ui.js", "./js/dates.js", "./js/store.js", "./js/auth.js", "./js/migrate.js",
-  "./js/pages/home.js", "./js/pages/tasks.js", "./js/pages/commission.js", "./js/pages/settings.js",
+  "./js/pages/home.js", "./js/pages/tasks.js", "./js/pages/sessions.js", "./js/pages/commission.js", "./js/pages/settings.js",
   "./icons/favicon.svg", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 self.addEventListener("install", e => {
