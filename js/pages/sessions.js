@@ -43,7 +43,18 @@ export const clients = () => Array.from(new Set(col.all().map(s => s.client).fil
 /* ---------- lifecycle ---------- */
 export function attach(c) {
   ctx = c; col = ctx.store.collection("sessions"); cfgDoc = ctx.store.doc("sessions"); intDoc = ctx.store.doc("integrations");
-  if (!attach._wired) { attach._wired = true; col.subscribe(() => queueSheetPush()); }
+  if (attach._wired) return;
+  attach._wired = true;
+  col.subscribe(() => queueSheetPush());
+  /* Self-healing: a push can fail because you were offline, the script was mid-redeploy,
+     or the workspace wasn't unlocked yet. Nothing is lost — the signature check means these
+     retries are free when the sheet is already correct, and they catch up when it isn't. */
+  const retry = () => queueSheetPush();
+  window.addEventListener("online", retry);
+  window.addEventListener("focus", retry);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) retry(); });
+  ctx.auth.onChange?.(retry);
+  setInterval(retry, 120000);
 }
 export function render(r, c) {
   attach(c); root = r;
@@ -156,7 +167,7 @@ function paint() {
         <td class="nw hide-mobile">${esc(s.location || "—")}</td>
         <td class="num hide-mobile">${hrs(s.hours)}</td>
         <td class="hide-mobile">${ed}</td>
-        ${owner ? `<td class="r" style="width:1%"><div class="acts"><button type="button" class="icon-btn sm" data-edit title="Edit">${icons.edit}</button><button type="button" class="icon-btn sm" data-more title="More">${icons.more}</button></div></td>` : ""}
+        ${owner ? `<td class="r" style="width:1%"><div class="acts"><button type="button" class="icon-btn sm hide-mobile" data-edit title="Edit">${icons.edit}</button><button type="button" class="icon-btn sm" data-more title="More">${icons.more}</button></div></td>` : ""}
       </tr>`;
     });
   });

@@ -1,6 +1,6 @@
 /* pages/commission.js — Ledger: every sale, the commission it earns, and what is still owed. */
 import { $, $$, el, esc, icons, uid, nowISO, num, fmtMoney, toast, modal, confirmDialog, menu, printHTML, download, debounce, countUp } from "../ui.js";
-import { todayISO, dmy, monthLabel, ym, rangeFor, parse, today, iso, monday, MON } from "../dates.js";
+import { todayISO, dmy, dm, monthLabel, ym, rangeFor, parse, today, iso, monday, MON } from "../dates.js";
 import * as work from "./tasks.js";
 
 export const id = "commission";
@@ -156,23 +156,24 @@ function paint() {
       const st = owner ? `<button type="button" class="pill ${stCls(e.status)}" data-cycle title="Click to move forward"><i></i>${esc(e.status)}</button>` : `<span class="pill ${stCls(e.status)}"><i></i>${esc(e.status)}</span>`;
       const linked = e.taskId && ctx.store.collection("tasks").get(e.taskId);
       rows += `<tr data-id="${e.id}" class="${owner ? "clickable" : ""}">
-        <td class="dim num" style="text-align:left;width:36px">${i}</td>
-        <td class="date">${esc(dmy(e.date))}</td>
+        <td class="dim num hide-mobile" style="text-align:left;width:36px">${i}</td>
+        <td class="date"><span class="hide-mobile">${esc(dmy(e.date))}</span><span class="only-mobile">${esc(dm(e.date))}</span></td>
         <td><div class="desc-lines">
           <div class="l"><b>${hideCli ? "Client" : esc(e.client || "—")}</b>${linked ? ` <span class="tag cat" title="Linked delivery task: ${esc(linked.title)}" style="margin-left:6px">${esc(work.stClass(linked.status) === "done" ? "Delivered" : "In production")}</span>` : ""}</div>
-          <div class="l sub">${esc(describe(e))}${e.notes ? ` · <span class="muted">${esc(e.notes)}</span>` : ""}</div></div></td>
-        ${hideAmt ? "" : `<td class="num">${money(tot)}</td>
-        <td class="num ${settled ? "settled" : ""}">${money(cm)}${entryRate(e) !== num(c.rate) ? `<span class="muted" style="font-size:10px"> ${fmtMoney(entryRate(e))}%</span>` : ""}</td>`}
-        <td>${st}${e.status === "Paid" && e.paidOn ? `<div class="mono muted" style="font-size:10.5px;margin-top:3px">paid ${esc(dmy(e.paidOn))}</div>` : (e.status === "Invoiced" && e.invoicedOn ? `<div class="mono muted" style="font-size:10.5px;margin-top:3px">sent ${esc(dmy(e.invoicedOn))}</div>` : "")}</td>
-        ${hideAmt ? "" : `<td class="num balance ${running ? "" : "dim"}">${running ? money(running) : "—"}</td>`}
-        ${owner ? `<td class="r" style="width:1%"><div class="acts"><button type="button" class="icon-btn sm" data-edit title="Edit">${icons.edit}</button><button type="button" class="icon-btn sm" data-more title="More">${icons.more}</button></div></td>` : ""}
+          <div class="l sub">${esc(describe(e))}${e.notes ? ` · <span class="muted">${esc(e.notes)}</span>` : ""}</div>
+          ${hideAmt ? "" : `<div class="l sub only-mobile mono">${esc(cur)} ${money(tot)} · commission ${money(cm)}${settled ? " · paid" : ""}</div>`}</div></td>
+        ${hideAmt ? "" : `<td class="num hide-mobile">${money(tot)}</td>
+        <td class="num hide-mobile ${settled ? "settled" : ""}">${money(cm)}${entryRate(e) !== num(c.rate) ? `<span class="muted" style="font-size:10px"> ${fmtMoney(entryRate(e))}%</span>` : ""}</td>`}
+        <td>${st}${e.status === "Paid" && e.paidOn ? `<div class="mono muted hide-mobile" style="font-size:10.5px;margin-top:3px">paid ${esc(dmy(e.paidOn))}</div>` : (e.status === "Invoiced" && e.invoicedOn ? `<div class="mono muted hide-mobile" style="font-size:10.5px;margin-top:3px">sent ${esc(dmy(e.invoicedOn))}</div>` : "")}</td>
+        ${hideAmt ? "" : `<td class="num balance hide-mobile ${running ? "" : "dim"}">${running ? money(running) : "—"}</td>`}
+        ${owner ? `<td class="r" style="width:1%"><div class="acts"><button type="button" class="icon-btn sm hide-mobile" data-edit title="Edit">${icons.edit}</button><button type="button" class="icon-btn sm" data-more title="More">${icons.more}</button></div></td>` : ""}
       </tr>`;
     });
   });
   t.innerHTML = `<div class="tbl-wrap"><table class="tbl">
-    <thead><tr><th style="width:36px">#</th><th>Date</th><th>Client · Sale</th>${hideAmt ? "" : `<th class="num">Total</th><th class="num">Commission</th>`}<th>Status</th>${hideAmt ? "" : `<th class="num balance">Balance due</th>`}${owner ? "<th></th>" : ""}</tr></thead>
+    <thead><tr><th class="hide-mobile" style="width:36px">#</th><th>Date</th><th>Client · Sale</th>${hideAmt ? "" : `<th class="num hide-mobile">Total</th><th class="num hide-mobile">Commission</th>`}<th>Status</th>${hideAmt ? "" : `<th class="num balance hide-mobile">Balance due</th>`}${owner ? "<th></th>" : ""}</tr></thead>
     <tbody>${rows}</tbody>
-    ${hideAmt ? "" : `<tfoot><tr class="subtotal"><td colspan="3" class="eyebrow" style="padding:12px 14px">Totals for this view</td><td class="num strong">${money(s.revenue)}</td><td class="num strong">${money(s.comm)}</td><td class="mono" style="font-size:11px">paid ${money(s.paid)}</td><td class="num balance">${money(s.due)}</td>${owner ? "<td></td>" : ""}</tr></tfoot>`}
+    ${hideAmt ? "" : `<tfoot><tr class="subtotal"><td colspan="3" class="eyebrow" style="padding:12px 14px">Totals for this view<span class="only-mobile mono" style="text-transform:none;letter-spacing:0"> · commission ${money(s.comm)} · due ${money(s.due)}</span></td><td class="num strong hide-mobile">${money(s.revenue)}</td><td class="num strong hide-mobile">${money(s.comm)}</td><td class="mono hide-mobile" style="font-size:11px">paid ${money(s.paid)}</td><td class="num balance hide-mobile">${money(s.due)}</td>${owner ? "<td></td>" : ""}</tr></tfoot>`}
   </table></div>`;
   $("[data-note]", root).textContent = (hideAmt || !owner) ? "" : "Click a status to move it forward: Pending → Invoiced → Paid.";
 }
