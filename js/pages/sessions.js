@@ -47,7 +47,7 @@ export function attach(c) {
 }
 export function render(r, c) {
   attach(c); root = r;
-  unsubs.forEach(u => u()); unsubs = [col.subscribe(paint), cfgDoc.subscribe(paint), intDoc.subscribe(paint)];
+  unsubs.forEach(u => u()); unsubs = [col.subscribe(paint), cfgDoc.subscribe(paint), intDoc.subscribe(paintSub)];
   root.innerHTML = `
     <div class="page-head">
       <div><h1>Sessions</h1><div class="sub" data-sub></div></div>
@@ -115,11 +115,7 @@ function paint() {
   const list = filtered(), t = totals(list);
   const everything = totals(all());
 
-  const sh = sheet();
-  $("[data-sub]", root).innerHTML = sh.url
-    ? `${icons.sheet}<span>Google Sheet ${sh.lastError ? `<span style="color:var(--bad)">— ${esc(sh.lastError)}</span>` : (sh.lastPushAt ? `up to date · sent ${esc(relTime(sh.lastPushAt))}` : "connected")}</span>${sh.viewUrl ? ` · <a href="${esc(sh.viewUrl)}" target="_blank" rel="noopener">Open the sheet ${icons.arrowUpRight}</a>` : ""}`
-    : "Podcast shoots — client, hours, location and editing.";
-  $("[data-sub]", root).classList.add("row");
+  paintSub();
   $("[data-actions]", root).innerHTML = owner ? `<button type="button" class="btn" data-opts>${icons.settings}<span class="hide-mobile">Options</span></button><button type="button" class="btn primary" data-new>${icons.plus}Log a session</button>` : "";
   $("[data-new]", root)?.addEventListener("click", () => openEditor(null));
   $("[data-opts]", root)?.addEventListener("click", openOptions);
@@ -169,6 +165,17 @@ function paint() {
     <tbody>${rows}</tbody>
     <tfoot><tr class="subtotal"><td colspan="4" class="eyebrow" style="padding:12px 14px">Total<span class="only-mobile" style="text-transform:none;letter-spacing:0"> · ${hrs(t.hours)}</span></td><td class="num strong hide-mobile">${hrs(t.hours)}</td><td class="hide-mobile"></td>${owner ? "<td></td>" : ""}</tr></tfoot>
   </table></div>`;
+}
+
+/* just the one line under the title — never the whole table */
+function paintSub() {
+  const n = root?.isConnected ? $("[data-sub]", root) : null;
+  if (!n) return;
+  const sh = sheet();
+  n.className = "sub row";
+  n.innerHTML = sh.url
+    ? `${icons.sheet}<span>Google Sheet ${sh.lastError ? `<span style="color:var(--bad)">— ${esc(sh.lastError)}</span>` : (sh.lastPushAt ? `up to date · sent ${esc(relTime(sh.lastPushAt))}` : "connected")}</span>${sh.viewUrl ? ` · <a href="${esc(sh.viewUrl)}" target="_blank" rel="noopener">Open the sheet ${icons.arrowUpRight}</a>` : ""}`
+    : "Podcast shoots — client, hours, location and editing.";
 }
 
 function onTableClick(e) {
@@ -309,7 +316,7 @@ function openOptions() {
     const r = await pushSheet({ force: true });
     b.disabled = false; b.innerHTML = `${icons.refresh}Save and send everything now`;
     toast(r.ok ? `Sent ${r.rows} session${r.rows === 1 ? "" : "s"} to the sheet` : r.error, { error: !r.ok });
-    paint();
+    paintSub();
   });
   $("[data-save]", foot).addEventListener("click", () => {
     saveSheet();
@@ -319,7 +326,7 @@ function openOptions() {
     c.hours = Array.from(new Set(hoursList.length ? hoursList : DEFAULT_CFG.hours)).sort((a, b) => a - b);
     c.defaults = { hours: num($("#oDefHours", body).value) || c.hours[0], location: $("#oDefLoc", body).value || c.locations[0], editing: $("#oDefEdit", body).value === "yes" };
     cfgDoc.replace(c); m.close(); toast("Options saved");
-    if (sheet().url) pushSheet().then(r => { if (r.ok && !r.skipped) toast("Google Sheet updated"); paint(); });
+    if (sheet().url) pushSheet().then(r => { if (r.ok && !r.skipped) toast("Google Sheet updated"); paintSub(); });
   });
   $("[data-cancel]", foot).addEventListener("click", () => m.close());
 }
@@ -329,19 +336,36 @@ function openOptions() {
    so a manager can just open the sheet link. The whole table is sent each time, which
    keeps the sheet correct after edits and deletions without any diffing. */
 export const sheet = () => ({ url: "", lastSig: "", lastPushAt: "", ...(intDoc?.get()?.sheet || {}) });
-const SHEET_HEAD = ["Date", "Day", "Client", "Location", "Hours", "Editing", "Notes"];
+const SHEET_HEAD = ["Date", "Client", "Location", "Hours", "Editing", "Notes"];
 const MONTH_HEAD = ["Month", "Sessions", "Hours", "With editing", "Without editing"];
 
+/* The sheet is laid out exactly like the table on this page: month band, its sessions
+   in date order, and a total at the end. The script in the sheet is a plain renderer,
+   so the layout can change here without ever touching Google again. */
 function sheetPayload() {
-  const list = all();
-  const rows = list.map(s => {
-    const d = parse(s.date);
-    return [s.date || "", d ? DAY[d.getDay()] : "", s.client || "", s.location || "", num(s.hours), s.editing ? "Yes" : "No", s.notes || ""];
+  const list = all(), t = totals(list);
+  const grid = [SHEET_HEAD.slice()], bands = [];
+  grouped(list, "month").forEach(g => {
+    bands.push(grid.length + 1);
+    grid.push([`${g.label}  ·  ${g.count} session${g.count === 1 ? "" : "s"}  ·  ${fmtMoney(g.hours, 2)}h  ·  ${g.edited} with editing`, "", "", "", "", ""]);
+    g.rows.forEach(x => grid.push([x.date || "", x.client || "", x.location || "", num(x.hours), x.editing ? "Yes" : "No", x.notes || ""]));
   });
-  const months = grouped(list, "month").map(g => [g.label, g.count, g.hours, g.edited, g.count - g.edited]);
-  const t = totals(list);
-  return { app: "flowork-backstage", sheet: "Sessions", head: SHEET_HEAD, rows, monthHead: MONTH_HEAD, months,
-           totals: { sessions: t.count, hours: t.hours, editing: t.edited }, generatedAt: nowISO() };
+  if (!list.length) grid.push(["No sessions logged yet", "", "", "", "", ""]);
+  const total = grid.length + 1;
+  grid.push([`Total  ·  ${t.count} session${t.count === 1 ? "" : "s"}`, "", "", t.hours, `${t.edited} with editing`, ""]);
+
+  const months = [MONTH_HEAD.slice(), ...grouped(list, "month").map(g => [g.label, g.count, g.hours, g.edited, g.count - g.edited])];
+  const mTotal = months.length + 1;
+  months.push(["Total", t.count, t.hours, t.edited, t.count - t.edited]);
+
+  return {
+    app: "flowork-backstage", v: 2, generatedAt: nowISO(),
+    sheets: [
+      { name: "Sessions", grid, bands, total, formats: ["ddd d mmm yyyy", "", "", '0.##"h"', "", ""], widths: [140, 170, 130, 70, 80, 280] },
+      { name: "By month", grid: months, bands: [], total: mTotal, formats: ["", "0", '0.##"h"', "0", "0"], widths: [140, 90, 80, 110, 130] },
+    ],
+    totals: { sessions: t.count, hours: t.hours, editing: t.edited },
+  };
 }
 const sig = str => { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return String(h); };
 
@@ -355,36 +379,72 @@ export async function pushSheet({ force = false } = {}) {
     // text/plain keeps it a "simple" request, so the browser sends it without a preflight
     const res = await fetch(cfg.url, { method: "POST", body, headers: { "Content-Type": "text/plain;charset=utf-8" }, redirect: "follow" });
     if (!res.ok) throw new Error("HTTP " + res.status);
+    // the script answers {"ok":true}; anything else means it ran but failed (usually an old version)
+    const txt = await res.text();
+    if (!/"ok"\s*:\s*true/.test(txt)) {
+      const err = "The sheet script is out of date — paste the new one and redeploy";
+      intDoc.set({ sheet: { ...cfg, lastError: err } });
+      return { ok: false, error: err };
+    }
   } catch (e) {
     try { await fetch(cfg.url, { method: "POST", body, mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" } }); }
     catch (e2) { intDoc.set({ sheet: { ...cfg, lastError: "Couldn't reach the sheet" } }); return { ok: false, error: "Couldn't reach the sheet — check the link, or your connection." }; }
   }
   intDoc.set({ sheet: { ...cfg, lastSig: s, lastPushAt: nowISO(), lastError: "" } });
-  return { ok: true, rows: payload.rows.length };
+  return { ok: true, rows: payload.totals.sessions };
 }
 function queueSheetPush() {
   if (!ctx?.auth?.isOwner || !sheet().url) return;
   clearTimeout(pushTimer);
-  pushTimer = setTimeout(() => { pushSheet().then(r => { if (!r.ok && !r.skipped) console.warn("[sessions] sheet push:", r.error); if (root?.isConnected) paint(); }); }, 2500);
+  pushTimer = setTimeout(() => { pushSheet().then(r => { if (!r.ok && !r.skipped) console.warn("[sessions] sheet push:", r.error); paintSub(); }); }, 2500);
 }
 
-export const APPS_SCRIPT = `/** flowork Backstage -> this sheet. Nothing to edit; just deploy it. */
+export const APPS_SCRIPT = `/** flowork Backstage -> this sheet. Paste, save, deploy. Nothing to edit, ever. */
 function doPost(e) {
   var body = JSON.parse(e.postData.contents);
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  write_(ss, 'Sessions', body.head, body.rows);
-  write_(ss, 'By month', body.monthHead, body.months);
+  for (var i = 0; i < body.sheets.length; i++) render_(ss, body.sheets[i]);
   return ContentService
-    .createTextOutput(JSON.stringify({ ok: true, rows: body.rows.length }))
+    .createTextOutput(JSON.stringify({ ok: true }))
     .setMimeType(ContentService.MimeType.JSON);
 }
-function write_(ss, name, head, rows) {
-  var sh = ss.getSheetByName(name) || ss.insertSheet(name);
+
+function render_(ss, s) {
+  var sh = ss.getSheetByName(s.name) || ss.insertSheet(s.name);
+  var rows = s.grid.length, cols = s.grid[0].length, i;
+
+  if (sh.getMaxRows() < rows) sh.insertRowsAfter(sh.getMaxRows(), rows - sh.getMaxRows());
+  if (sh.getMaxColumns() < cols) sh.insertColumnsAfter(sh.getMaxColumns(), cols - sh.getMaxColumns());
   sh.clear();
-  sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold');
-  if (rows && rows.length) sh.getRange(2, 1, rows.length, head.length).setValues(rows);
+
+  var grid = s.grid.map(function (r) {
+    return r.map(function (v) {
+      if (typeof v === 'string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(v)) {
+        var p = v.split('-');
+        return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+      }
+      return v;
+    });
+  });
+  sh.getRange(1, 1, rows, cols).setValues(grid).setVerticalAlignment('middle').setFontFamily('Inter');
+
+  sh.getRange(1, 1, 1, cols).setFontWeight('bold').setBackground('#F4F4EF').setFontColor('#5B6157');
   sh.setFrozenRows(1);
-  sh.autoResizeColumns(1, head.length);
+
+  for (i = 0; i < (s.bands || []).length; i++) {
+    sh.getRange(s.bands[i], 1, 1, cols).setFontWeight('bold').setBackground('#EDF0E8').setFontColor('#4D5C47');
+  }
+  if (s.total) sh.getRange(s.total, 1, 1, cols).setFontWeight('bold').setBorder(true, null, null, null, null, null);
+
+  for (i = 0; i < (s.formats || []).length; i++) {
+    if (s.formats[i]) sh.getRange(2, i + 1, rows - 1, 1).setNumberFormat(s.formats[i]);
+  }
+  for (i = 0; i < (s.widths || []).length; i++) {
+    if (s.widths[i]) sh.setColumnWidth(i + 1, s.widths[i]);
+  }
+
+  if (sh.getMaxRows() > rows + 1) sh.deleteRows(rows + 2, sh.getMaxRows() - rows - 1);
+  if (sh.getMaxColumns() > cols) sh.deleteColumns(cols + 1, sh.getMaxColumns() - cols);
 }`;
 
 /* ---------- export ---------- */
