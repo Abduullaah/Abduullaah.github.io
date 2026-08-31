@@ -127,9 +127,18 @@ function paint() {
   const everything = totals(all());
 
   paintSub();
-  $("[data-actions]", root).innerHTML = owner ? `<button type="button" class="btn" data-opts>${icons.settings}<span class="hide-mobile">Options</span></button><button type="button" class="btn primary" data-new>${icons.plus}Log a session</button>` : "";
+  const shc = sheet();
+  const openSheetBtn = shc.url
+    ? (shc.viewUrl
+        ? `<a class="btn" href="${esc(shc.viewUrl)}" target="_blank" rel="noopener" title="Open the Google Sheet">${icons.sheet}<span class="hide-mobile">Open sheet</span><span class="only-mobile">Sheet</span></a>`
+        : `<button type="button" class="btn" data-sheet-link title="Add the link to your Google Sheet">${icons.sheet}<span class="hide-mobile">Open sheet</span><span class="only-mobile">Sheet</span></button>`)
+    : "";
+  $("[data-actions]", root).innerHTML = owner
+    ? `${openSheetBtn}<button type="button" class="btn" data-opts>${icons.settings}<span class="hide-mobile">Options</span></button><button type="button" class="btn primary" data-new>${icons.plus}Log a session</button>`
+    : openSheetBtn;
   $("[data-new]", root)?.addEventListener("click", () => openEditor(null));
   $("[data-opts]", root)?.addEventListener("click", openOptions);
+  $("[data-sheet-link]", root)?.addEventListener("click", askForSheetLink);
 
   // location filter options (keeps the current choice, adds anything that has been used)
   const sel = $("[data-floc]", root);
@@ -193,7 +202,7 @@ function paintSub() {
   const sh = sheet();
   n.className = "sub row";
   n.innerHTML = sh.url
-    ? `${icons.sheet}<span>Google Sheet ${sh.lastError ? `<span style="color:var(--bad)">— ${esc(sh.lastError)}</span>` : (sh.lastPushAt ? `up to date · sent ${esc(relTime(sh.lastPushAt))}` : "connected")}</span>${sh.viewUrl ? ` · <a href="${esc(sh.viewUrl)}" target="_blank" rel="noopener">Open the sheet ${icons.arrowUpRight}</a>` : ""}`
+    ? `${icons.sheet}<span>Google Sheet ${sh.lastError ? `<span style="color:var(--bad)">— ${esc(sh.lastError)}</span>` : (sh.lastPushAt ? `up to date · sent ${esc(relTime(sh.lastPushAt))}` : "connected")}</span>`
     : "Podcast shoots — client, hours, location and editing.";
 }
 
@@ -260,6 +269,28 @@ export function openEditor(idOrNull, presets = {}) {
   $("[data-cancel]", foot).addEventListener("click", () => m.close());
   $("[data-delete]", foot)?.addEventListener("click", () => { m.close(); del(existing); });
   body.addEventListener("keydown", ev => { if (ev.key === "Enter" && ev.target.tagName === "INPUT" && ev.target.type !== "number") { ev.preventDefault(); save(); } });
+}
+
+/* The web app link and the sheet's own link are different things, and only you have
+   the second one — ask for it the first time the button is pressed, then never again. */
+function askForSheetLink() {
+  const body = el(`<div class="stack gap-12">
+    <p class="ink2">Paste the link to the Google Sheet itself — the one you open to look at it, and the one your manager uses.</p>
+    <div class="field"><label for="qSheet">Sheet link</label><input class="inp mono" id="qSheet" style="font-size:12px" placeholder="https://docs.google.com/spreadsheets/d/…" autofocus></div>
+    <p class="hint">In the sheet: <b>Share → Anyone with the link → Viewer</b>, then <b>Copy link</b>.</p>
+  </div>`);
+  const foot = el(`<div class="row" style="width:100%"><button type="button" class="btn primary" data-ok>Save and open</button><button type="button" class="btn ghost" data-cancel>Cancel</button></div>`);
+  const m = modal({ title: "Open the sheet", body, footer: foot, size: "narrow" });
+  const save = () => {
+    const v = $("#qSheet", body).value.trim();
+    if (!/^https?:\/\//.test(v)) { toast("That doesn't look like a link", { error: true }); return; }
+    intDoc.set({ sheet: { ...sheet(), viewUrl: v } });
+    m.close(); paint();
+    window.open(v, "_blank", "noopener");
+  };
+  $("[data-ok]", foot).addEventListener("click", save);
+  $("[data-cancel]", foot).addEventListener("click", () => m.close());
+  body.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); save(); } });
 }
 
 /* ---------- options: locations, hours, defaults ---------- */
