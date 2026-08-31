@@ -13,7 +13,7 @@ export const DEFAULT_CFG = {
 };
 
 let ctx, root, col, cfgDoc, intDoc, unsubs = [];
-let pushTimer = null;
+let pushTimer = null, pushing = false, paintFrame = 0;
 let filters = { period: "thisMonth", location: "", editing: "", q: "" };
 
 /* ---------- helpers (exported for Home) ---------- */
@@ -47,7 +47,7 @@ export function attach(c) {
 }
 export function render(r, c) {
   attach(c); root = r;
-  unsubs.forEach(u => u()); unsubs = [col.subscribe(paint), cfgDoc.subscribe(paint), intDoc.subscribe(paintSub)];
+  unsubs.forEach(u => u()); unsubs = [col.subscribe(schedulePaint), cfgDoc.subscribe(schedulePaint), intDoc.subscribe(paintSub)];
   root.innerHTML = `
     <div class="page-head">
       <div><h1>Sessions</h1><div class="sub" data-sub></div></div>
@@ -165,6 +165,14 @@ function paint() {
     <tbody>${rows}</tbody>
     <tfoot><tr class="subtotal"><td colspan="4" class="eyebrow" style="padding:12px 14px">Total<span class="only-mobile" style="text-transform:none;letter-spacing:0"> · ${hrs(t.hours)}</span></td><td class="num strong hide-mobile">${hrs(t.hours)}</td><td class="hide-mobile"></td>${owner ? "<td></td>" : ""}</tr></tfoot>
   </table></div>`;
+}
+
+/* several store events can land in the same tick — repaint once, on the next frame */
+function schedulePaint() {
+  if (paintFrame) return;
+  // a timer, not requestAnimationFrame: rAF never fires while the tab is in the background,
+  // which would leave the table stale until you looked at it again
+  paintFrame = setTimeout(() => { paintFrame = 0; paint(); }, 16);
 }
 
 /* just the one line under the title — never the whole table */
@@ -373,8 +381,21 @@ export async function pushSheet({ force = false } = {}) {
   const cfg = sheet();
   if (!cfg.url) return { ok: false, error: "No Google Sheet connected yet." };
   if (!ctx.auth.isOwner) return { ok: false, error: "Unlock with your PIN first." };
+  if (pushing) return { ok: true, skipped: true };
+  await col.ready;
+  /* Guards against wiping the manager's sheet. A Firestore listener that opens a moment
+     before sign-in lands is refused and reports an empty list until it retries — sending
+     that would blank the sheet and then fill it again a second later. */
+  if (col.denied) return { ok: false, skipped: true, error: "Not unlocked yet" };
+  const list = all();
+  if (!list.length && Number(cfg.lastCount || 0) > 0 && !force) return { ok: false, skipped: true, error: "Nothing loaded yet — not sending an empty sheet" };
   const payload = sheetPayload(), body = JSON.stringify(payload), s = sig(body);
   if (!force && s === cfg.lastSig) return { ok: true, skipped: true };
+  pushing = true;
+  try { return await send(cfg, body, s, list.length); } finally { pushing = false; }
+}
+
+async function send(cfg, body, s, count) {
   try {
     // text/plain keeps it a "simple" request, so the browser sends it without a preflight
     const res = await fetch(cfg.url, { method: "POST", body, headers: { "Content-Type": "text/plain;charset=utf-8" }, redirect: "follow" });
@@ -390,11 +411,11 @@ export async function pushSheet({ force = false } = {}) {
     try { await fetch(cfg.url, { method: "POST", body, mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" } }); }
     catch (e2) { intDoc.set({ sheet: { ...cfg, lastError: "Couldn't reach the sheet" } }); return { ok: false, error: "Couldn't reach the sheet — check the link, or your connection." }; }
   }
-  intDoc.set({ sheet: { ...cfg, lastSig: s, lastPushAt: nowISO(), lastError: "" } });
-  return { ok: true, rows: payload.totals.sessions };
+  intDoc.set({ sheet: { ...cfg, lastSig: s, lastCount: count, lastPushAt: nowISO(), lastError: "" } });
+  return { ok: true, rows: count };
 }
 function queueSheetPush() {
-  if (!ctx?.auth?.isOwner || !sheet().url) return;
+  if (!ctx?.auth?.isOwner || !sheet().url || col.denied) return;
   clearTimeout(pushTimer);
   pushTimer = setTimeout(() => { pushSheet().then(r => { if (!r.ok && !r.skipped) console.warn("[sessions] sheet push:", r.error); paintSub(); }); }, 2500);
 }
