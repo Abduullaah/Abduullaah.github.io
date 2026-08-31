@@ -1,6 +1,6 @@
 /* pages/sessions.js — Sessions: every podcast shoot logged, and the sheet you export from it. */
-import { $, $$, el, esc, icons, uid, nowISO, num, fmtMoney, fmtInt, toast, modal, confirmDialog, menu, printHTML, download, debounce, countUp } from "../ui.js";
-import { todayISO, dmy, dayShort, monthLabel, ym, rangeFor, parse, today, iso, monday, weekLabel, weekShort, weekNo, addDays, DAY, MON } from "../dates.js";
+import { $, $$, el, esc, icons, uid, nowISO, num, fmtMoney, toast, modal, confirmDialog, menu, printHTML, download, debounce } from "../ui.js";
+import { todayISO, dmy, dayShort, monthLabel, ym, rangeFor, parse, today, iso, monday, weekLabel, weekShort, weekNo, addDays, relTime, DAY, MON } from "../dates.js";
 
 export const id = "sessions";
 export const title = "Sessions";
@@ -12,7 +12,8 @@ export const DEFAULT_CFG = {
   defaults: { location: "Dubai Hills", hours: 2, editing: true },
 };
 
-let ctx, root, col, cfgDoc, unsubs = [];
+let ctx, root, col, cfgDoc, intDoc, unsubs = [];
+let pushTimer = null;
 let filters = { period: "thisMonth", location: "", editing: "", q: "" };
 
 /* ---------- helpers (exported for Home) ---------- */
@@ -40,16 +41,19 @@ export function newSession(over = {}) {
 export const clients = () => Array.from(new Set(col.all().map(s => s.client).filter(Boolean))).sort();
 
 /* ---------- lifecycle ---------- */
-export function attach(c) { ctx = c; col = ctx.store.collection("sessions"); cfgDoc = ctx.store.doc("sessions"); }
+export function attach(c) {
+  ctx = c; col = ctx.store.collection("sessions"); cfgDoc = ctx.store.doc("sessions"); intDoc = ctx.store.doc("integrations");
+  if (!attach._wired) { attach._wired = true; col.subscribe(() => queueSheetPush()); }
+}
 export function render(r, c) {
   attach(c); root = r;
-  unsubs.forEach(u => u()); unsubs = [col.subscribe(paint), cfgDoc.subscribe(paint)];
+  unsubs.forEach(u => u()); unsubs = [col.subscribe(paint), cfgDoc.subscribe(paint), intDoc.subscribe(paint)];
   root.innerHTML = `
     <div class="page-head">
       <div><h1>Sessions</h1><div class="sub" data-sub></div></div>
       <div class="actions" data-actions></div>
     </div>
-    <div class="stats" data-stats></div>
+    <div class="figs" data-figs></div>
     <div class="toolbar" style="margin-top:22px">
       <div class="seg" role="group" aria-label="Period">
         ${[["thisWeek", "This week", "Week"], ["thisMonth", "This month", "Month"], ["lastMonth", "Last month", "Last"], ["thisYear", "This year", "Year"], ["all", "All", "All"]].map(([k, l, sm]) => `<button type="button" data-period="${k}"><span class="hide-mobile">${l}</span><span class="only-mobile">${sm}</span></button>`).join("")}
@@ -62,8 +66,7 @@ export function render(r, c) {
       <span class="grow"></span>
       <button type="button" class="btn ghost" data-export>${icons.download}Export</button>
     </div>
-    <div class="card" data-table></div>
-    <p class="kpi-note" data-note></p>`;
+    <div class="card" data-table></div>`;
   wire(); paint();
 }
 export function unmount() { unsubs.forEach(u => u()); unsubs = []; document.removeEventListener("keydown", onKey); }
@@ -110,11 +113,13 @@ function paint() {
   const owner = ctx.auth.isOwner;
   const hideCli = ctx.auth.mask("sessionsClients");
   const list = filtered(), t = totals(list);
-  const [ma, mb] = rangeFor("thisMonth");
-  const month = totals(all().filter(s => s.date >= ma && s.date <= mb));
   const everything = totals(all());
 
-  $("[data-sub]", root).textContent = `Podcast shoots — client, hours, location and editing, ready to export.`;
+  const sh = sheet();
+  $("[data-sub]", root).innerHTML = sh.url
+    ? `${icons.sheet}<span>Google Sheet ${sh.lastError ? `<span style="color:var(--bad)">— ${esc(sh.lastError)}</span>` : (sh.lastPushAt ? `up to date · sent ${esc(relTime(sh.lastPushAt))}` : "connected")}</span>${sh.viewUrl ? ` · <a href="${esc(sh.viewUrl)}" target="_blank" rel="noopener">Open the sheet ${icons.arrowUpRight}</a>` : ""}`
+    : "Podcast shoots — client, hours, location and editing.";
+  $("[data-sub]", root).classList.add("row");
   $("[data-actions]", root).innerHTML = owner ? `<button type="button" class="btn" data-opts>${icons.settings}<span class="hide-mobile">Options</span></button><button type="button" class="btn primary" data-new>${icons.plus}Log a session</button>` : "";
   $("[data-new]", root)?.addEventListener("click", () => openEditor(null));
   $("[data-opts]", root)?.addEventListener("click", openOptions);
@@ -124,21 +129,15 @@ function paint() {
   sel.innerHTML = `<option value="">Location: all</option>` + usedLocations().map(l => `<option value="${esc(l)}" ${l === filters.location ? "selected" : ""}>${esc(l)}</option>`).join("");
   $("[data-fedit]", root).value = filters.editing;
 
-  const stat = (k, v, cls = "", d = "") => `<div class="stat ${cls}"><div class="k">${k}</div><div class="v">${v}</div>${d ? `<div class="d">${d}</div>` : ""}</div>`;
-  $("[data-stats]", root).innerHTML =
-    stat("Sessions", `<span data-count="${t.count}" data-int="1">${t.count}</span>`, "accent", periodLabel()) +
-    stat("Hours", `<span data-count="${t.hours}">${fmtMoney(t.hours, 2)}</span><small style="margin:0 0 0 4px">h</small>`, "", t.count ? `${fmtMoney(t.hours / t.count, 1)}h average` : "") +
-    stat("With editing", t.edited, "", `${t.count - t.edited} without`) +
-    stat(filters.period === "thisMonth" ? "All time" : "This month",
-      filters.period === "thisMonth" ? everything.count : month.count,
-      "",
-      filters.period === "thisMonth" ? `${hrs(everything.hours)} logged` : `${hrs(month.hours)} · ${month.edited} with editing`);
-  $$("[data-count]", root).forEach(n => countUp(n, num(n.dataset.count), n.dataset.int ? fmtInt : (v => fmtMoney(v, 2)), 450));
+  const fig = (k, v, cls = "") => `<div class="fig ${cls}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  $("[data-figs]", root).innerHTML =
+    fig(`Sessions · ${periodLabel()}`, t.count, "lead") +
+    fig("Hours", `${fmtMoney(t.hours, 2)}<small>h</small>`) +
+    fig("With editing", t.edited);
 
   const tb = $("[data-table]", root);
   if (!list.length) {
     tb.innerHTML = `<div class="tbl-empty">${everything.count ? "No sessions in this view." : (owner ? `No sessions logged yet. <button type="button" class="btn primary sm" data-new-empty style="margin-left:8px">${icons.plus}Log a session</button>` : "No sessions logged yet.")}</div>`;
-    $("[data-note]", root).textContent = "";
     return;
   }
   const cols = 6 + (owner ? 1 : 0);
@@ -147,7 +146,7 @@ function paint() {
   let i = 0, rows = "";
   Array.from(groups.keys()).sort().forEach(k => {
     const gs = groups.get(k), g = totals(gs);
-    rows += `<tr class="group"><td colspan="${cols}">${esc(groupLabel(k))} · ${g.count} session${g.count === 1 ? "" : "s"} · ${hrs(g.hours)} · ${g.edited} with editing</td></tr>`;
+    rows += `<tr class="group"><td colspan="${cols}">${esc(groupLabel(k))} · ${g.count} session${g.count === 1 ? "" : "s"} · ${hrs(g.hours)}</td></tr>`;
     gs.forEach(s => {
       i++;
       const ed = owner
@@ -168,9 +167,8 @@ function paint() {
   tb.innerHTML = `<div class="tbl-wrap"><table class="tbl">
     <thead><tr><th class="hide-mobile" style="width:36px">#</th><th>Date</th><th>Client</th><th class="hide-mobile">Location</th><th class="num hide-mobile">Hours</th><th class="hide-mobile">Editing</th>${owner ? "<th></th>" : ""}</tr></thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr class="subtotal"><td colspan="3" class="eyebrow" style="padding:12px 14px">Totals for this view<span class="only-mobile" style="text-transform:none;letter-spacing:0"> · ${t.count} · ${hrs(t.hours)} · ${t.edited} with editing</span></td><td class="nw hide-mobile">${t.clients} client${t.clients === 1 ? "" : "s"}</td><td class="num strong hide-mobile">${hrs(t.hours)}</td><td class="mono hide-mobile" style="font-size:11px">${t.edited} with editing</td>${owner ? "<td></td>" : ""}</tr></tfoot>
+    <tfoot><tr class="subtotal"><td colspan="4" class="eyebrow" style="padding:12px 14px">Total<span class="only-mobile" style="text-transform:none;letter-spacing:0"> · ${hrs(t.hours)}</span></td><td class="num strong hide-mobile">${hrs(t.hours)}</td><td class="hide-mobile"></td>${owner ? "<td></td>" : ""}</tr></tfoot>
   </table></div>`;
-  $("[data-note]", root).textContent = owner ? "Click a row to edit it, or the Editing pill to switch it. Export turns any period into a spreadsheet — session by session, or totalled by week, month, client or location." : "";
 }
 
 function onTableClick(e) {
@@ -241,6 +239,7 @@ export function openEditor(idOrNull, presets = {}) {
 /* ---------- options: locations, hours, defaults ---------- */
 function openOptions() {
   const c = JSON.parse(JSON.stringify(cfg()));
+  const sh0 = sheet();
   const usedLoc = name => col.all().filter(s => s.location === name).length;
   const body = el(`<div class="stack gap-16">
     <div class="field"><label>Locations</label><p class="hint" style="margin:-2px 0 6px">These are the choices in the Location dropdown.</p><div data-list="locations"></div><button type="button" class="btn sm mt-8" data-add-loc>${icons.plus}Add location</button></div>
@@ -254,6 +253,26 @@ function openOptions() {
       </div>
     </div>
     <p class="hint">Renaming a location leaves past sessions exactly as they were logged.</p>
+    <div class="divider" style="margin:2px 0"></div>
+    <div class="field"><label>Google Sheet</label>
+      <p class="hint" style="margin:-2px 0 8px">Every session you log is written into a Google Sheet, so your manager only needs the sheet link — nothing to send, nothing to export by hand.</p>
+      <div class="row wrap mb-8"><span class="badge-mode ${sh0.url ? "cloud" : "local"}">${sh0.url ? (sh0.lastPushAt ? `Connected · sent ${esc(relTime(sh0.lastPushAt))}` : "Connected") : "Not connected"}</span>${sh0.lastError ? `<span class="muted" style="font-size:12.5px;color:var(--bad)">${esc(sh0.lastError)}</span>` : ""}</div>
+      <div class="field mb-8"><label for="oSheetUrl">Web app link (ends in /exec)</label><input class="inp mono" id="oSheetUrl" value="${esc(sh0.url || "")}" placeholder="https://script.google.com/macros/s/…/exec" style="font-size:12px"></div>
+      <div class="field"><label for="oSheetView">Sheet link — the one you give your manager (optional)</label><input class="inp mono" id="oSheetView" value="${esc(sh0.viewUrl || "")}" placeholder="https://docs.google.com/spreadsheets/d/…" style="font-size:12px"></div>
+      <div class="row wrap mt-8"><button type="button" class="btn sm" data-sheet-send>${icons.refresh}Save and send everything now</button></div>
+      <details class="mt-8"><summary style="cursor:pointer;font-weight:500;font-size:13.5px">How to set it up — five minutes, once</summary>
+        <ol class="steps mt-8">
+          <li><p>In Google Drive create a <b>new spreadsheet</b> and name it, e.g. <b>flowork podcast sessions</b>.</p></li>
+          <li><p>In it: <b>Extensions → Apps Script</b>. Delete whatever is in the editor, paste the script below, and press <b>Save</b>.</p></li>
+          <li><p><b>Deploy → New deployment → Web app</b>. Execute as <b>Me</b>, Who has access <b>Anyone</b> → <b>Deploy</b> → allow the permissions it asks for → copy the <b>Web app URL</b>.</p></li>
+          <li><p>Paste that URL above and press <b>Save and send everything now</b>. The sheet fills in.</p></li>
+          <li><p>In the sheet: <b>Share → Anyone with the link → Viewer</b>, copy that link, and give it to your manager. It stays live from then on.</p></li>
+        </ol>
+        <pre class="code mt-8" style="max-height:220px;overflow:auto">${esc(APPS_SCRIPT)}</pre>
+        <button type="button" class="btn sm mt-8" data-copy-script>${icons.copy}Copy the script</button>
+        <p class="hint mt-8">Keep the web app link private: anyone who has it can write to that sheet. Only the sessions table is sent — nothing about tasks or commission.</p>
+      </details>
+    </div>
   </div>`);
   const foot = el(`<div class="row" style="width:100%"><button type="button" class="btn primary" data-save>Save options</button><button type="button" class="btn ghost" data-cancel>Cancel</button></div>`);
   const m = modal({ title: "Session options", body, footer: foot });
@@ -277,16 +296,96 @@ function openOptions() {
     if (ev.target.closest("[data-add-loc]")) { c.locations.push("New location"); paintLocs(); const ins = $$('[data-list="locations"] .nm', body); ins[ins.length - 1]?.select(); }
   });
   paintLocs();
+  $("[data-copy-script]", body)?.addEventListener("click", () => navigator.clipboard.writeText(APPS_SCRIPT).then(() => toast("Script copied — paste it into Apps Script")).catch(() => toast("Copy failed", { error: true })));
+  const saveSheet = () => {
+    const url = $("#oSheetUrl", body).value.trim(), viewUrl = $("#oSheetView", body).value.trim();
+    intDoc.set({ sheet: { ...sheet(), url, viewUrl, lastError: "" } });
+    return url;
+  };
+  $("[data-sheet-send]", body)?.addEventListener("click", async e => {
+    const b = e.currentTarget;
+    if (!saveSheet()) return toast("Paste the web app link first", { error: true });
+    b.disabled = true; b.textContent = "Sending…";
+    const r = await pushSheet({ force: true });
+    b.disabled = false; b.innerHTML = `${icons.refresh}Save and send everything now`;
+    toast(r.ok ? `Sent ${r.rows} session${r.rows === 1 ? "" : "s"} to the sheet` : r.error, { error: !r.ok });
+    paint();
+  });
   $("[data-save]", foot).addEventListener("click", () => {
+    saveSheet();
     c.locations = c.locations.map(l => l.trim()).filter(Boolean);
     if (!c.locations.length) c.locations = DEFAULT_CFG.locations.slice();
     const hoursList = $("#oHours", body).value.split(",").map(x => num(x)).filter(x => x > 0);
     c.hours = Array.from(new Set(hoursList.length ? hoursList : DEFAULT_CFG.hours)).sort((a, b) => a - b);
     c.defaults = { hours: num($("#oDefHours", body).value) || c.hours[0], location: $("#oDefLoc", body).value || c.locations[0], editing: $("#oDefEdit", body).value === "yes" };
     cfgDoc.replace(c); m.close(); toast("Options saved");
+    if (sheet().url) pushSheet().then(r => { if (r.ok && !r.skipped) toast("Google Sheet updated"); paint(); });
   });
   $("[data-cancel]", foot).addEventListener("click", () => m.close());
 }
+
+/* ---------- Google Sheet mirror ----------
+   Every change is pushed to an Apps Script web app the user deploys on their own sheet,
+   so a manager can just open the sheet link. The whole table is sent each time, which
+   keeps the sheet correct after edits and deletions without any diffing. */
+export const sheet = () => ({ url: "", lastSig: "", lastPushAt: "", ...(intDoc?.get()?.sheet || {}) });
+const SHEET_HEAD = ["Date", "Day", "Client", "Location", "Hours", "Editing", "Notes"];
+const MONTH_HEAD = ["Month", "Sessions", "Hours", "With editing", "Without editing"];
+
+function sheetPayload() {
+  const list = all();
+  const rows = list.map(s => {
+    const d = parse(s.date);
+    return [s.date || "", d ? DAY[d.getDay()] : "", s.client || "", s.location || "", num(s.hours), s.editing ? "Yes" : "No", s.notes || ""];
+  });
+  const months = grouped(list, "month").map(g => [g.label, g.count, g.hours, g.edited, g.count - g.edited]);
+  const t = totals(list);
+  return { app: "flowork-backstage", sheet: "Sessions", head: SHEET_HEAD, rows, monthHead: MONTH_HEAD, months,
+           totals: { sessions: t.count, hours: t.hours, editing: t.edited }, generatedAt: nowISO() };
+}
+const sig = str => { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return String(h); };
+
+export async function pushSheet({ force = false } = {}) {
+  const cfg = sheet();
+  if (!cfg.url) return { ok: false, error: "No Google Sheet connected yet." };
+  if (!ctx.auth.isOwner) return { ok: false, error: "Unlock with your PIN first." };
+  const payload = sheetPayload(), body = JSON.stringify(payload), s = sig(body);
+  if (!force && s === cfg.lastSig) return { ok: true, skipped: true };
+  try {
+    // text/plain keeps it a "simple" request, so the browser sends it without a preflight
+    const res = await fetch(cfg.url, { method: "POST", body, headers: { "Content-Type": "text/plain;charset=utf-8" }, redirect: "follow" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+  } catch (e) {
+    try { await fetch(cfg.url, { method: "POST", body, mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" } }); }
+    catch (e2) { intDoc.set({ sheet: { ...cfg, lastError: "Couldn't reach the sheet" } }); return { ok: false, error: "Couldn't reach the sheet — check the link, or your connection." }; }
+  }
+  intDoc.set({ sheet: { ...cfg, lastSig: s, lastPushAt: nowISO(), lastError: "" } });
+  return { ok: true, rows: payload.rows.length };
+}
+function queueSheetPush() {
+  if (!ctx?.auth?.isOwner || !sheet().url) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => { pushSheet().then(r => { if (!r.ok && !r.skipped) console.warn("[sessions] sheet push:", r.error); if (root?.isConnected) paint(); }); }, 2500);
+}
+
+export const APPS_SCRIPT = `/** flowork Backstage -> this sheet. Nothing to edit; just deploy it. */
+function doPost(e) {
+  var body = JSON.parse(e.postData.contents);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  write_(ss, 'Sessions', body.head, body.rows);
+  write_(ss, 'By month', body.monthHead, body.months);
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: true, rows: body.rows.length }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+function write_(ss, name, head, rows) {
+  var sh = ss.getSheetByName(name) || ss.insertSheet(name);
+  sh.clear();
+  sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold');
+  if (rows && rows.length) sh.getRange(2, 1, rows.length, head.length).setValues(rows);
+  sh.setFrozenRows(1);
+  sh.autoResizeColumns(1, head.length);
+}`;
 
 /* ---------- export ---------- */
 const GROUPINGS = [

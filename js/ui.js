@@ -58,6 +58,7 @@ export const icons = {
   info:      P('<circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 5v.2"/>'),
   warn:      P('<path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3M8 11.3v.2"/>'),
   key:       P('<circle cx="5.5" cy="10.5" r="3"/><path d="M7.6 8.4 13.5 2.5M11 5l1.5 1.5M9.5 6.5 11 8"/>'),
+  sheet:     P('<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M2.5 6h11M6.5 6v7.5M2.5 9.75h11"/>'),
   grid:      P('<rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/>'),
   list:      P('<path d="M3 4.5h10M3 8h10M3 11.5h10"/>'),
   board:     P('<rect x="2.5" y="2.5" width="3.2" height="11" rx="1"/><rect x="6.9" y="2.5" width="3.2" height="7" rx="1"/><rect x="11.3" y="2.5" width="2.2" height="9" rx="1"/>'),

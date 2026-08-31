@@ -145,6 +145,10 @@ img{max-width:100%}
 .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:26px}
 .page-head h1{font-family:var(--serif);font-weight:400;font-size:38px;line-height:1.05;letter-spacing:-.015em}
 .page-head .sub{margin-top:8px;color:var(--muted);font-size:13.5px}
+.page-head .sub.row{gap:7px;flex-wrap:wrap}
+.page-head .sub svg{width:14px;height:14px;flex:none}
+.page-head .sub a{color:var(--sage-ink);text-decoration:underline;text-underline-offset:2px;display:inline-flex;align-items:center;gap:3px}
+.page-head .sub a svg{width:11px;height:11px}
 .page-head .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .guest-bar{display:flex;align-items:center;gap:10px;padding:10px 40px;background:var(--sage-soft);color:var(--sage-ink);font-size:13px;border-bottom:1px solid var(--line)}
 .guest-bar b{font-weight:600}
@@ -239,6 +243,17 @@ input[type=number].inp::-webkit-outer-spin-button,input[type=number].inp::-webki
 .stat.accent{background:var(--sage-soft)}
 .stat.accent .k{color:var(--sage-ink)}
 .stat.emph .v{color:var(--pending)}
+
+/* quiet figures — a line of facts instead of a wall of tiles */
+.figs{display:flex;flex-wrap:wrap;gap:26px 44px;align-items:flex-end;margin:0 0 26px}
+.fig .k{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.fig .v{margin-top:7px;font-family:var(--serif);font-size:30px;line-height:1;letter-spacing:-.01em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.fig .v small{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--muted);margin-left:5px}
+.fig .v em{font-style:normal;font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--muted);margin-right:6px}
+.fig.lead .v{font-size:42px}
+.fig.accent .v{color:var(--sage-ink)}
+.fig.due .v{color:var(--pending)}
+.fig.good .v{color:var(--good)}
 
 /* ---------- tables (ledger) ---------- */
 .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -603,6 +618,9 @@ pre.code{font-family:var(--mono);font-size:12px;line-height:1.55;background:var(
   @keyframes sheetIn{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
   .stats{grid-template-columns:repeat(2,1fr)}
   .stat .v{font-size:26px}
+  .figs{gap:18px 30px;margin-bottom:22px}
+  .fig .v{font-size:25px}
+  .fig.lead .v{font-size:33px}
   .week-strip .d .dd{font-size:16px}
   .tbl th,.tbl td{padding-left:12px;padding-right:12px}
   .toasts{bottom:calc(84px + env(safe-area-inset-bottom))}

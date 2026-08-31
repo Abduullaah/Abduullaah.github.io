@@ -67,7 +67,7 @@ export function render(r, c) {
       <div><h1>Commission</h1><div class="sub" data-sub></div></div>
       <div class="actions" data-actions></div>
     </div>
-    <div class="stats" data-stats></div>
+    <div class="figs" data-figs></div>
     <div class="toolbar" style="margin-top:22px">
       <div class="seg" role="group" aria-label="Period">
         ${[["thisMonth", "This month"], ["lastMonth", "Last month"], ["thisYear", "This year"], ["all", "All"]].map(([k, l]) => `<button type="button" data-period="${k}">${l}</button>`).join("")}
@@ -128,16 +128,13 @@ function paint() {
   $("[data-new]", root)?.addEventListener("click", () => openEditor(null));
   $("[data-rates]", root)?.addEventListener("click", openRates);
 
-  const stat = (k, v, cls = "", d = "") => `<div class="stat ${cls}"><div class="k">${k}</div><div class="v">${v}</div>${d ? `<div class="d">${d}</div>` : ""}</div>`;
-  const m = v => `<small>${esc(cur)}</small><span data-count="${v}">${money(v)}</span>`;
-  $("[data-stats]", root).innerHTML = hideAmt
-    ? stat("Sales logged", sAll.count) + stat("Pending", all().filter(e => e.status === "Pending").length) + stat("Invoiced", all().filter(e => e.status === "Invoiced").length) + stat("Paid", all().filter(e => e.status === "Paid").length)
-    : stat("Balance due to me", m(sAll.due), "emph accent", oldest ? `oldest unpaid ${oldest} day${oldest === 1 ? "" : "s"}` : (sAll.due ? "" : "all settled")) +
-      stat("Earned this month", m(month.comm), "", `${month.count} sale${month.count === 1 ? "" : "s"}`) +
-      stat("Commission earned", m(sAll.comm), "", "all time") +
-      stat("Paid out", m(sAll.paid), "good") +
-      stat("Revenue logged", m(sAll.revenue), "", `${sAll.count} sale${sAll.count === 1 ? "" : "s"}`);
-  $$("[data-count]", root).forEach(n => countUp(n, num(n.dataset.count), money, 500));
+  const fig = (k, v, cls = "") => `<div class="fig ${cls}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  const m = v => `<em>${esc(cur)}</em>${money(v)}`;
+  $("[data-figs]", root).innerHTML = hideAmt
+    ? fig("Sales logged", sAll.count, "lead") + fig("Paid", all().filter(e => e.status === "Paid").length)
+    : fig(oldest ? `Balance due · oldest ${oldest} day${oldest === 1 ? "" : "s"}` : "Balance due to me", m(sAll.due), "lead due") +
+      fig("Earned this month", m(month.comm)) +
+      fig("Paid out", m(sAll.paid), "good");
 
   // table
   const t = $("[data-table]", root);
@@ -177,7 +174,7 @@ function paint() {
     <tbody>${rows}</tbody>
     ${hideAmt ? "" : `<tfoot><tr class="subtotal"><td colspan="3" class="eyebrow" style="padding:12px 14px">Totals for this view</td><td class="num strong">${money(s.revenue)}</td><td class="num strong">${money(s.comm)}</td><td class="mono" style="font-size:11px">paid ${money(s.paid)}</td><td class="num balance">${money(s.due)}</td>${owner ? "<td></td>" : ""}</tr></tfoot>`}
   </table></div>`;
-  $("[data-note]", root).textContent = hideAmt ? "" : "Balance due counts every sale not yet marked Paid. Marking a sale Paid keeps it in Commission earned and removes it from the balance. Click a status to move it forward: Pending → Invoiced → Paid.";
+  $("[data-note]", root).textContent = (hideAmt || !owner) ? "" : "Click a status to move it forward: Pending → Invoiced → Paid.";
 }
 
 function onTableClick(e) {

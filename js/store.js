@@ -254,7 +254,7 @@ class Store {
   setPref(key, v) { if (v === null || v === undefined) localStorage.removeItem(`${NS}:pref:${key}`); else lsSet(`${NS}:pref:${key}`, v); }
 
   /* ---------- backup / restore ---------- */
-  async exportAll(names = { collections: ["tasks", "sessions", "commission"], docs: ["commission", "sessions", "tasks"] }) {
+  async exportAll(names = { collections: ["tasks", "sessions", "commission"], docs: ["commission", "sessions", "tasks", "integrations"] }) {
     const out = { app: "flowork-workspace", version: 1, exportedAt: nowISO(), settings: this.settings?.get() || {}, docs: {}, collections: {} };
     for (const n of names.docs) { const d = this.doc(n); await d.ready; out.docs[n] = d.get(); }
     for (const n of names.collections) { const c = this.collection(n); await c.ready; out.collections[n] = c.all(); }
