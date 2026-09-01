@@ -25,6 +25,9 @@ function paint() {
   const owner = ctx.auth.isOwner, p = ctx.profile();
   const canWork = ctx.auth.canSee("tasks"), canLedger = ctx.auth.canSee("commission"), canSess = ctx.auth.canSee("sessions");
   const showPeople = !ctx.auth.mask("tasksPeople"), showNotes = !ctx.auth.mask("tasksNotes"), hideAmt = ctx.auth.mask("commissionAmounts");
+  const tasksCol = ctx.store.collection("tasks"), salesCol = ctx.store.collection("commission"), sessCol = ctx.store.collection("sessions");
+  const okTasks = tasksCol.loaded !== false, okSales = salesCol.loaded !== false, okSess = sessCol.loaded !== false;
+  const n = (ok, v) => ok ? v : "—";
   const tasks = canWork ? ctx.store.collection("tasks").all() : [];
   const sales = canLedger ? ctx.store.collection("commission").all() : [];
   const sessions = canSess ? ctx.store.collection("sessions").all() : [];
@@ -52,7 +55,8 @@ function paint() {
   const maxM = Math.max(1, ...byMonth);
 
   /* ---- sessions ---- */
-  const sMonth = shoots.totals(sessions.filter(x => x.date >= ma && x.date <= mb));
+  const last30 = iso(addDays(td, -29));
+  const sRecent = shoots.totals(sessions.filter(x => x.date >= last30 && x.date <= tdISO));
   const recent = sessions.slice().sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 4);
 
   const fig = (k, v, cls = "") => `<div class="fig ${cls}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
@@ -74,12 +78,12 @@ function paint() {
     </div>
 
     <div class="figs">
-      ${canWork ? fig("Open", open.length, "lead") : ""}
-      ${canWork && late.length ? fig("Past due", late.length, "due") : ""}
-      ${canWork && !late.length ? fig("Done this week", doneWeek.length, "good") : ""}
-      ${canSess ? fig("Sessions this month", sMonth.count) : ""}
-      ${canLedger && !hideAmt ? fig("Balance due", `<em>${esc(cur)}</em>${fmtMoney(s.due)}`, "due") : ""}
-      ${canLedger && hideAmt ? fig("Sales logged", s.count) : ""}
+      ${canWork ? fig("Open", n(okTasks, open.length), "lead") : ""}
+      ${canWork && okTasks && late.length ? fig("Past due", late.length, "due") : ""}
+      ${canWork && (!okTasks || !late.length) ? fig("Done this week", n(okTasks, doneWeek.length), "good") : ""}
+      ${canSess ? fig("Sessions · last 30 days", n(okSess, sRecent.count)) : ""}
+      ${canLedger && !hideAmt ? fig("Balance due", okSales ? `<em>${esc(cur)}</em>${fmtMoney(s.due)}` : "—", "due") : ""}
+      ${canLedger && hideAmt ? fig("Sales logged", n(okSales, s.count)) : ""}
     </div>
 
     <div class="ov-grid mt-24">
@@ -94,7 +98,7 @@ function paint() {
             ${hideAmt ? `<div class="fig"><div class="k">Sales logged</div><div class="v">${s.count}</div></div>` : `
             <div class="eyebrow">Balance due to me</div>
             <div class="serif" style="font-size:38px;line-height:1.05;margin-top:6px;color:var(--pending);font-variant-numeric:tabular-nums">
-              <span class="mono" style="font-size:12px;color:var(--muted);letter-spacing:.06em;vertical-align:middle;margin-right:6px">${esc(cur)}</span>${fmtMoney(s.due)}</div>
+              <span class="mono" style="font-size:12px;color:var(--muted);letter-spacing:.06em;vertical-align:middle;margin-right:6px">${esc(cur)}</span>${n(okSales, fmtMoney(s.due))}</div>
             <div class="divider" style="margin:18px 0"></div>
             <div class="eyebrow mb-8">Commission, last 6 months</div>
             <div class="spark">${byMonth.map((v, i) => `<div class="b ${i === 5 ? "cur" : ""}" style="height:${Math.max(4, Math.round(v / maxM * 56))}px" title="${esc(cur)} ${fmtMoney(v)}"></div>`).join("")}</div>
@@ -104,8 +108,8 @@ function paint() {
         ${canSess ? `<div class="card">
           <div class="card-h"><h2>Sessions</h2><a href="#/sessions">Open</a></div>
           <div class="card-b">
-            <div class="eyebrow">This month</div>
-            <div class="serif" style="font-size:38px;line-height:1.05;margin-top:6px">${sMonth.count}<span class="mono muted" style="font-size:12px;margin-left:8px">${esc(shoots.hrs(sMonth.hours))}</span></div>
+            <div class="eyebrow">Last 30 days</div>
+            <div class="serif" style="font-size:38px;line-height:1.05;margin-top:6px">${n(okSess, sRecent.count)}<span class="mono muted" style="font-size:12px;margin-left:8px">${esc(shoots.hrs(sRecent.hours))}</span></div>
             ${recent.length ? `<div class="divider" style="margin:18px 0"></div><div class="eyebrow mb-8">Latest shoots</div>${recent.map(x => `<div class="row" style="justify-content:space-between;gap:12px;padding:5px 0;font-size:13px"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ctx.auth.mask("sessionsClients") ? "Client" : esc(x.client || "—")}<span class="muted"> · ${esc(x.location || "—")}</span></span><span class="mono muted" style="font-size:11.5px;white-space:nowrap">${esc(shoots.hrs(x.hours))} · ${esc(dayShort(x.date))}</span></div>`).join("")}` : `<div class="muted mt-16" style="font-size:13px">No sessions logged yet.</div>`}
           </div>
         </div>` : ""}

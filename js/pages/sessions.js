@@ -13,7 +13,7 @@ export const DEFAULT_CFG = {
 };
 
 let ctx, root, col, cfgDoc, intDoc, unsubs = [];
-let pushTimer = null, pushing = false, paintFrame = 0;
+let pushTimer = null, pushing = false, paintFrame = 0, mounted = 0, openedOnce = false;
 let filters = { period: "thisMonth", location: "", editing: "", q: "" };
 
 /* ---------- helpers (exported for Home) ---------- */
@@ -78,7 +78,16 @@ export function render(r, c) {
       <button type="button" class="btn ghost" data-export>${icons.download}Export</button>
     </div>
     <div class="card" data-table></div>`;
+  mounted = Date.now();
+  /* On the 1st of a month "this month" is legitimately empty, which reads exactly like
+     lost data. Open on everything instead, with the period control showing where we are. */
+  if (!openedOnce) {
+    openedOnce = true;
+    if (col.loaded !== false && !filtered().length && all().length) filters.period = "all";
+  }
   wire(); paint();
+  // if it is still not loaded a few seconds in, say so rather than sitting silent
+  setTimeout(() => { if (root?.isConnected && col.loaded === false) paint(); }, 8200);
 }
 export function unmount() { unsubs.forEach(u => u()); unsubs = []; document.removeEventListener("keydown", onKey); }
 function onKey(e) {
@@ -124,6 +133,7 @@ function paint() {
   const owner = ctx.auth.isOwner;
   const hideCli = ctx.auth.mask("sessionsClients");
   const list = filtered(), t = totals(list);
+  const ready = col.loaded !== false;
   const everything = totals(all());
 
   paintSub();
@@ -146,14 +156,23 @@ function paint() {
   $("[data-fedit]", root).value = filters.editing;
 
   const fig = (k, v, cls = "") => `<div class="fig ${cls}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
-  $("[data-figs]", root).innerHTML =
-    fig(`Sessions · ${periodLabel()}`, t.count, "lead") +
-    fig("Hours", `${fmtMoney(t.hours, 2)}<small>h</small>`) +
-    fig("With editing", t.edited);
+  $("[data-figs]", root).innerHTML = ready
+    ? fig(`Sessions · ${periodLabel()}`, t.count, "lead") +
+      fig("Hours", `${fmtMoney(t.hours, 2)}<small>h</small>`) +
+      fig("With editing", t.edited)
+    : fig(`Sessions · ${periodLabel()}`, "—", "lead") + fig("Hours", "—") + fig("With editing", "—");
 
   const tb = $("[data-table]", root);
+  if (!ready) {
+    tb.innerHTML = `<div class="tbl-empty">${Date.now() - mounted > 8000
+      ? "Still loading your sessions — check your connection, this page will fill in by itself."
+      : "Loading your sessions…"}</div>`;
+    return;
+  }
   if (!list.length) {
-    tb.innerHTML = `<div class="tbl-empty">${everything.count ? "No sessions in this view." : (owner ? `No sessions logged yet. <button type="button" class="btn primary sm" data-new-empty style="margin-left:8px">${icons.plus}Log a session</button>` : "No sessions logged yet.")}</div>`;
+    tb.innerHTML = `<div class="tbl-empty">${everything.count
+      ? `Nothing logged ${esc(periodLabel())}.<div class="muted mt-8" style="font-size:13px">You have ${everything.count} session${everything.count === 1 ? "" : "s"} in total — ${hrs(everything.hours)}.</div><button type="button" class="btn sm mt-16" data-show-all>Show everything</button>`
+      : (owner ? `No sessions logged yet. <button type="button" class="btn primary sm" data-new-empty style="margin-left:8px">${icons.plus}Log a session</button>` : "No sessions logged yet.")}</div>`;
     return;
   }
   const cols = 6 + (owner ? 1 : 0);
@@ -208,6 +227,11 @@ function paintSub() {
 
 function onTableClick(e) {
   if (e.target.closest("[data-new-empty]")) { openEditor(null); return; }
+  if (e.target.closest("[data-show-all]")) {
+    filters.period = "all";
+    $$("[data-period]", root).forEach(b => b.setAttribute("aria-pressed", String(b.dataset.period === "all")));
+    paint(); return;
+  }
   const tr = e.target.closest("tr[data-id]"); if (!tr) return;
   const s = col.get(tr.dataset.id); if (!s || !ctx.auth.isOwner) return;
   if (e.target.closest("[data-toggle-edit]")) { col.upsert({ ...s, editing: !s.editing, updatedAt: nowISO() }); return; }

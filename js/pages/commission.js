@@ -1,6 +1,6 @@
 /* pages/commission.js — Ledger: every sale, the commission it earns, and what is still owed. */
 import { $, $$, el, esc, icons, uid, nowISO, num, fmtMoney, toast, modal, confirmDialog, menu, printHTML, download, debounce, countUp } from "../ui.js";
-import { todayISO, dmy, dm, monthLabel, ym, rangeFor, parse, today, iso, monday, MON } from "../dates.js";
+import { todayISO, dmy, dm, monthLabel, ym, rangeFor, parse, today, iso, monday, MON, MONF } from "../dates.js";
 import * as work from "./tasks.js";
 
 export const id = "commission";
@@ -22,7 +22,7 @@ export const DEFAULT_CFG = {
   ],
 };
 
-let ctx, root, col, cfgDoc, unsubs = [];
+let ctx, root, col, cfgDoc, unsubs = [], mounted = 0;
 let filters = { period: "all", status: "", q: "" };
 
 /* ---------- money helpers (exported for Today / People) ---------- */
@@ -81,7 +81,9 @@ export function render(r, c) {
     </div>
     <div class="card" data-table></div>
     <p class="kpi-note" data-note></p>`;
+  mounted = Date.now();
   wire(); paint();
+  setTimeout(() => { if (root?.isConnected && col.loaded === false) paint(); }, 8200);
 }
 export function unmount() { unsubs.forEach(u => u()); unsubs = []; document.removeEventListener("keydown", onKey); }
 function onKey(e) {
@@ -119,6 +121,7 @@ function paint() {
   const owner = ctx.auth.isOwner, c = cfg(), cur = c.currency;
   const hideAmt = ctx.auth.mask("commissionAmounts"), hideCli = ctx.auth.mask("commissionClients");
   const list = filtered(), sAll = summary(all()), s = summary(list);
+  const ready = col.loaded !== false;
   const [ma, mb] = rangeFor("thisMonth");
   const month = summary(all().filter(e => e.date >= ma && e.date <= mb));
   const oldest = oldestUnpaidDays(all());
@@ -130,16 +133,26 @@ function paint() {
 
   const fig = (k, v, cls = "") => `<div class="fig ${cls}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
   const m = v => `<em>${esc(cur)}</em>${money(v)}`;
-  $("[data-figs]", root).innerHTML = hideAmt
+  const dash = fig("Balance due to me", "—", "lead due") + fig("Earned this month", "—") + fig("Paid out", "—");
+  $("[data-figs]", root).innerHTML = !ready ? dash : hideAmt
     ? fig("Sales logged", sAll.count, "lead") + fig("Paid", all().filter(e => e.status === "Paid").length)
     : fig(oldest ? `Balance due · oldest ${oldest} day${oldest === 1 ? "" : "s"}` : "Balance due to me", m(sAll.due), "lead due") +
-      fig("Earned this month", m(month.comm)) +
+      fig(`Earned in ${MONF[today().getMonth()]}`, m(month.comm)) +
       fig("Paid out", m(sAll.paid), "good");
 
   // table
   const t = $("[data-table]", root);
+  if (!ready) {
+    t.innerHTML = `<div class="tbl-empty">${Date.now() - mounted > 8000
+      ? "Still loading your sales — check your connection, this page will fill in by itself."
+      : "Loading your sales…"}</div>`;
+    $("[data-note]", root).textContent = "";
+    return;
+  }
   if (!list.length) {
-    t.innerHTML = `<div class="tbl-empty">${all().length ? "No sales match this view." : (owner ? `Nothing logged yet. <button type="button" class="btn primary sm" data-new-empty style="margin-left:8px">${icons.plus}Log a sale</button>` : "Nothing logged yet.")}</div>`;
+    t.innerHTML = `<div class="tbl-empty">${all().length
+      ? `No sales in this view.<div class="muted mt-8" style="font-size:13px">You have ${all().length} sale${all().length === 1 ? "" : "s"} logged in total.</div><button type="button" class="btn sm mt-16" data-show-all>Show everything</button>`
+      : (owner ? `Nothing logged yet. <button type="button" class="btn primary sm" data-new-empty style="margin-left:8px">${icons.plus}Log a sale</button>` : "Nothing logged yet.")}</div>`;
     $("[data-note]", root).textContent = "";
     return;
   }
@@ -180,6 +193,12 @@ function paint() {
 
 function onTableClick(e) {
   if (e.target.closest("[data-new-empty]")) { openEditor(null); return; }
+  if (e.target.closest("[data-show-all]")) {
+    filters.period = "all"; filters.status = "";
+    $$("[data-period]", root).forEach(b => b.setAttribute("aria-pressed", String(b.dataset.period === "all")));
+    $$("[data-st]", root).forEach(b => b.setAttribute("aria-pressed", String(b.dataset.st === "")));
+    paint(); return;
+  }
   const tr = e.target.closest("tr[data-id]"); if (!tr) return;
   const en = col.get(tr.dataset.id); if (!en) return;
   if (!ctx.auth.isOwner) return;

@@ -313,6 +313,10 @@ export async function pushLocalToCloud() {
   await auth.init();
   PAGES.forEach(p => p.attach?.(ctx()));
   store.onStatus(() => { if (shellBuilt) renderSync(); });
+  /* Coming back to the app — or back online — retries anything the server refused earlier,
+     so a page can never sit there empty once access is available again. */
+  ["online", "focus"].forEach(ev => window.addEventListener(ev, () => store.refresh?.()));
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) store.refresh?.(); });
   store.settings.subscribe(() => { if (shellBuilt) { renderNav(); renderGuestBar(); document.title = `${current?.page?.title || ""} — ${profile().workspaceName}`; } });
   auth.onChange(() => cloudHousekeeping());
   cloudHousekeeping();

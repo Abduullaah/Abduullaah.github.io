@@ -41,7 +41,7 @@ function localCollection(name, onChange) {
   const ev = emitter();
   const persist = () => { lsSet(key, items); ev.emit(items); onChange?.(); };
   return {
-    name, ready: Promise.resolve(), denied: false,
+    name, ready: Promise.resolve(), denied: false, loaded: true,
     all: () => items.slice(),
     get: id => items.find(x => x.id === id) || null,
     upsert(item) { const i = items.findIndex(x => x.id === item.id); if (i >= 0) items[i] = item; else items.push(item); persist(); },
@@ -58,7 +58,7 @@ function localDoc(name, onChange, kind = "doc") {
   const ev = emitter();
   const persist = () => { lsSet(key, data); ev.emit(data); onChange?.(); };
   return {
-    name, ready: Promise.resolve(), denied: false,
+    name, ready: Promise.resolve(), denied: false, loaded: true,
     get: () => data,
     set(patch) { data = { ...data, ...patch }; persist(); },
     replace(obj) { data = { ...obj }; persist(); },
@@ -86,14 +86,26 @@ async function loadFirebase(cfg) {
 function cloudCollection(fb, name, setStatus) {
   const { fs, db } = fb;
   const ref = fs.collection(db, "modules", name, "items");
-  let items = [], denied = false, unsub = null, resolveReady, retry = 0, retryTimer = null;
+  let items = [], denied = false, loaded = false, unsub = null, resolveReady, retry = 0, retryTimer = null;
   const ready = new Promise(r => resolveReady = r);
   const ev = emitter();
-  const start = () => {
+  /* A listener opened before sign-in lands is refused, and a refused listener stays dead.
+     That is how a private page ends up showing a confident zero. So: back off, but never
+     stop trying while somebody is signed in — the page must catch up on its own. */
+  const scheduleRetry = () => {
     clearTimeout(retryTimer);
+    const signedIn = !!fb.auth.currentUser;
+    if (!signedIn && retry >= 4) return;              // nobody to authorise us; wait for resubscribe()
+    const delay = Math.min(8000, 400 * Math.pow(2, Math.min(retry, 4)));
+    retry++;
+    retryTimer = setTimeout(() => start(false), delay);
+  };
+  const start = (reset = true) => {
+    clearTimeout(retryTimer);
+    if (reset) retry = 0;
     unsub?.();
     unsub = fs.onSnapshot(ref, { includeMetadataChanges: true }, snap => {
-      denied = false; retry = 0;
+      denied = false; retry = 0; loaded = true;
       items = snap.docs.map(d => d.data());
       ev.emit(items);
       setStatus(snap.metadata.hasPendingWrites ? "saving" : "synced");
@@ -101,9 +113,8 @@ function cloudCollection(fb, name, setStatus) {
     }, err => {
       denied = err.code === "permission-denied";
       if (!denied) { console.warn("[store]", name, err); setStatus("error"); }
-      // a listener opened a moment before sign-in lands is denied once — take the hint and retry
-      if (denied && fb.auth.currentUser && retry < 5) { retry++; retryTimer = setTimeout(start, 400 * retry); }
       items = []; ev.emit(items); resolveReady();
+      scheduleRetry();
     });
   };
   start();
@@ -119,7 +130,7 @@ function cloudCollection(fb, name, setStatus) {
     return true;
   };
   return {
-    name, ready, get denied() { return denied; },
+    name, ready, get denied() { return denied; }, get loaded() { return loaded; },
     all: () => items.slice(),
     get: id => items.find(x => x.id === id) || null,
     upsert(item) { const i = items.findIndex(x => x.id === item.id); if (i >= 0) items[i] = item; else items.push(item); ev.emit(items); return write(fs.setDoc(fs.doc(ref, item.id), strip(item))); },
@@ -141,26 +152,35 @@ function cloudCollection(fb, name, setStatus) {
 function cloudDoc(fb, path, setStatus) {
   const { fs, db } = fb;
   const ref = fs.doc(db, ...path);
-  let data = {}, denied = false, unsub = null, resolveReady, retry = 0, retryTimer = null;
+  let data = {}, denied = false, loaded = false, unsub = null, resolveReady, retry = 0, retryTimer = null;
   const ready = new Promise(r => resolveReady = r);
   const ev = emitter();
-  const start = () => {
+  const scheduleRetry = () => {
     clearTimeout(retryTimer);
+    const signedIn = !!fb.auth.currentUser;
+    if (!signedIn && retry >= 4) return;
+    const delay = Math.min(8000, 400 * Math.pow(2, Math.min(retry, 4)));
+    retry++;
+    retryTimer = setTimeout(() => start(false), delay);
+  };
+  const start = (reset = true) => {
+    clearTimeout(retryTimer);
+    if (reset) retry = 0;
     unsub?.();
     unsub = fs.onSnapshot(ref, { includeMetadataChanges: true }, snap => {
-      denied = false; retry = 0; data = snap.exists() ? snap.data() : {};
+      denied = false; retry = 0; loaded = true; data = snap.exists() ? snap.data() : {};
       ev.emit(data); setStatus(snap.metadata.hasPendingWrites ? "saving" : "synced"); resolveReady();
     }, err => {
       denied = err.code === "permission-denied";
       if (!denied) { console.warn("[store]", path.join("/"), err); setStatus("error"); }
-      if (denied && fb.auth.currentUser && retry < 5) { retry++; retryTimer = setTimeout(start, 400 * retry); }
       data = {}; ev.emit(data); resolveReady();
+      scheduleRetry();
     });
   };
   start();
   const write = p => { setStatus("saving"); return p.then(() => true).catch(e => { console.error("[store] write failed", path.join("/"), e); setStatus("error"); toast(e.code === "permission-denied" ? "Not saved — unlock with your PIN first" : "Not saved — check your connection", { error: true }); return false; }); };
   return {
-    name: path.join("/"), ready, get denied() { return denied; },
+    name: path.join("/"), ready, get denied() { return denied; }, get loaded() { return loaded; },
     get: () => data,
     set(patch) { data = { ...data, ...patch }; ev.emit(data); return write(fs.setDoc(ref, strip(patch), { merge: true })); },
     replace(obj) { data = { ...obj }; ev.emit(data); return write(fs.setDoc(ref, strip(obj))); },
@@ -245,9 +265,24 @@ class Store {
   /* after sign-in / sign-out, permission-denied listeners must be re-created */
   resubscribe() {
     if (this.mode !== "cloud") return;
-    const run = () => { this._cols.forEach(c => c.restart()); this._docs.forEach(d => d.restart()); this.settings?.restart?.(); };
+    const all = () => [...this._cols.values(), ...this._docs.values(), ...(this.settings ? [this.settings] : [])];
+    const run = () => all().forEach(x => x.restart?.());
     run();
     setTimeout(run, 700);   // the auth token can land a beat after sign-in
+    /* Watchdog: on a slow connection the token can take several seconds, and a listener
+       refused in the meantime would otherwise stay dead and show an empty page. */
+    clearInterval(this._watch);
+    let tries = 0;
+    this._watch = setInterval(() => {
+      const stuck = all().filter(x => x.denied);
+      if (!stuck.length || ++tries > 20) { clearInterval(this._watch); this._watch = null; return; }
+      if (this.fb?.auth?.currentUser) stuck.forEach(x => x.restart());
+    }, 1500);
+  }
+  /* anything still empty because it was refused earlier gets another chance here */
+  refresh() {
+    if (this.mode !== "cloud") return;
+    [...this._cols.values(), ...this._docs.values()].forEach(x => { if (x.denied) x.restart?.(); });
   }
   /* ---------- device prefs (never synced) ---------- */
   pref(key, fb = null) { return lsGet(`${NS}:pref:${key}`, fb); }
