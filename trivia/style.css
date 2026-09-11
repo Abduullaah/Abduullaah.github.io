@@ -1,0 +1,271 @@
+/* =====================================================================
+   THE ROUND — styling for a screen you are sitting six feet away from.
+   Everything sizes off vmin so the same layout works on a laptop panel
+   and on a 55" TV without a single media query for "TV".
+   ===================================================================== */
+
+:root{
+  --bg:#0A0D12;
+  --bg-2:#111722;
+  --card:#161E2B;
+  --card-2:#1D2737;
+  --line:#2A3547;
+  --ink:#F2F5F8;
+  --ink-2:#A7B4C6;
+  --dim:#6C7C92;
+
+  --gold:#F5C542;
+  --good:#3DDC97;
+  --bad:#FF5C6C;
+
+  --t1:#FF6B6B;  /* team colours, in order */
+  --t2:#3ECFE8;
+  --t3:#A8E063;
+  --t4:#B892FF;
+  --t5:#FFA45C;
+  --t6:#FF7ACB;
+
+  --serif:"Instrument Serif","Iowan Old Style",Georgia,serif;
+  --sans:"Instrument Sans","Inter","Helvetica Neue",Arial,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+
+  --ease:cubic-bezier(.2,.8,.2,1);
+  color-scheme:dark;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--sans); -webkit-font-smoothing:antialiased;
+  overflow:hidden; overscroll-behavior:none;
+  background-image:
+    radial-gradient(120vmin 90vmin at 78% -18%, rgba(62,207,232,.10), transparent 62%),
+    radial-gradient(100vmin 80vmin at 12% 112%, rgba(245,197,66,.09), transparent 60%);
+}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;margin:0;cursor:pointer;text-align:inherit;touch-action:manipulation}
+button:disabled{cursor:default;opacity:.35}
+input{font:inherit;color:inherit}
+h1,h2,h3,p{margin:0}
+ul,ol{margin:0;padding:0;list-style:none}
+::selection{background:var(--gold);color:#111}
+
+/* ---------- shell ---------- */
+#stage{position:fixed;inset:0;display:flex;flex-direction:column}
+.screen{flex:1;min-height:0;display:flex;flex-direction:column;padding:3.4vmin 4.6vmin;animation:rise .32s var(--ease) both;
+  overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+.screen::-webkit-scrollbar{width:6px}
+.screen::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+@keyframes rise{from{opacity:0;transform:translateY(1.4vmin)}to{opacity:1;transform:none}}
+.center{align-items:center;justify-content:center;text-align:center}
+.grow{flex:1;min-height:0}
+.hide{display:none !important}
+
+/* ---------- type ---------- */
+.kicker{font-family:var(--mono);font-size:1.55vmin;letter-spacing:.34em;text-transform:uppercase;color:var(--dim)}
+.wordmark{font-family:var(--serif);font-size:9.4vmin;line-height:.88;letter-spacing:-.02em}
+.wordmark em{font-style:italic;color:var(--gold)}
+.lede{font-size:2.2vmin;color:var(--ink-2);max-width:62ch;line-height:1.5}
+
+/* the question itself — the single most important text on screen */
+.q{font-family:var(--serif);font-size:clamp(26px,6.2vmin,86px);line-height:1.08;letter-spacing:-.015em;max-width:23ch;margin:0 auto;text-wrap:balance}
+.q.sm{font-size:clamp(22px,4.6vmin,58px);max-width:28ch}
+
+/* ---------- top bar ---------- */
+.bar{display:flex;align-items:center;gap:2.4vmin;padding:0 0 2.2vmin;flex-wrap:wrap}
+.bar .spacer{flex:1}
+.pill{display:inline-flex;align-items:center;gap:.8vmin;font-family:var(--mono);font-size:1.5vmin;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-2);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:.9vmin 1.8vmin}
+.pill b{color:var(--gold);font-weight:500}
+
+/* live scores in the corner, always visible, never in the way */
+.mini{display:flex;gap:1.1vmin;flex-wrap:wrap}
+.mini .m{display:flex;align-items:center;gap:.8vmin;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:.75vmin 1.5vmin;font-size:1.6vmin}
+.mini .dot{width:1.2vmin;height:1.2vmin;border-radius:50%;flex:none}
+.mini .nm{color:var(--ink-2);max-width:18ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mini .sc{font-family:var(--mono);font-weight:500}
+
+/* ---------- timer ---------- */
+.timer{height:1.1vmin;background:var(--card);border-radius:999px;overflow:hidden;margin-bottom:2.6vmin;flex:none}
+.timer i{display:block;height:100%;width:100%;background:linear-gradient(90deg,var(--good),var(--gold));transform-origin:left;transition:transform .1s linear}
+.timer.warn i{background:linear-gradient(90deg,var(--gold),var(--bad))}
+.timer.out i{background:var(--bad)}
+.timerrow{display:flex;align-items:center;gap:2vmin;margin-bottom:2.6vmin;flex:none}
+.timerrow .timer{flex:1;margin-bottom:0}
+.secs{font-family:var(--mono);font-size:2.8vmin;color:var(--ink-2);line-height:1;width:3ch;text-align:right;transition:color .2s}
+.timerrow:has(.timer.warn) .secs{color:var(--gold)}
+.timerrow:has(.timer.out) .secs{color:var(--bad)}
+
+/* ---------- option cards ---------- */
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:1.8vmin;width:100%;max-width:150vmin;margin:0 auto}
+.opts.one{grid-template-columns:1fr;max-width:110vmin}
+.opt{display:flex;align-items:center;gap:2.2vmin;background:var(--card);border:2px solid var(--line);border-radius:2vmin;
+  padding:2.4vmin 2.8vmin;font-size:clamp(15px,2.9vmin,34px);line-height:1.2;transition:all .3s var(--ease)}
+.opt .lt{flex:none;width:5.6vmin;height:5.6vmin;display:grid;place-items:center;border-radius:1.2vmin;background:var(--card-2);
+  font-family:var(--mono);font-size:2.6vmin;color:var(--dim);transition:all .3s var(--ease)}
+.opt.right{border-color:var(--good);background:rgba(61,220,151,.13);box-shadow:0 0 0 .6vmin rgba(61,220,151,.10)}
+.opt.right .lt{background:var(--good);color:#06231A;font-weight:600}
+.opt.fade{opacity:.3}
+
+/* true / false */
+.tf{display:grid;grid-template-columns:1fr 1fr;gap:2.4vmin;width:100%;max-width:110vmin;margin:0 auto}
+.tf .opt{justify-content:center;font-size:clamp(20px,4.6vmin,54px);font-family:var(--serif);padding:3.4vmin}
+
+/* ---------- odd-one-out / connection tiles ---------- */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:1.8vmin;width:100%;max-width:160vmin;margin:0 auto}
+.tile{background:var(--card);border:2px solid var(--line);border-radius:2vmin;padding:4vmin 2vmin;text-align:center;
+  font-family:var(--serif);font-size:clamp(17px,3.5vmin,44px);line-height:1.1;transition:all .35s var(--ease);
+  display:grid;place-items:center;min-height:22vmin}
+.tile.right{border-color:var(--good);background:rgba(61,220,151,.13);transform:scale(1.03)}
+.tile.wrong{border-color:var(--bad);background:rgba(255,92,108,.10)}
+.tile.fade{opacity:.28}
+.tile.veiled{color:transparent;background:var(--bg-2);border-style:dashed;border-color:#222C3B}
+.tile.veiled::after{content:"?";color:#2E3A4D;font-size:5vmin}
+
+/* connection clue stack */
+.clues{display:flex;flex-direction:column;gap:1.6vmin;width:100%;max-width:100vmin;margin:0 auto}
+.clue{display:flex;align-items:center;gap:2.4vmin;background:var(--card);border:2px solid var(--line);border-radius:1.8vmin;padding:2.6vmin 3vmin;
+  font-family:var(--serif);font-size:clamp(20px,4.4vmin,52px);animation:slide .3s var(--ease) both}
+.clue .n{font-family:var(--mono);font-size:2vmin;color:var(--dim);flex:none;width:3vmin}
+.clue.pending{opacity:.22;border-style:dashed}
+@keyframes slide{from{opacity:0;transform:translateX(-1.6vmin)}to{opacity:1;transform:none}}
+
+/* ---------- emoji ---------- */
+.emo{font-size:clamp(46px,16vmin,190px);line-height:1.15;letter-spacing:.04em;filter:drop-shadow(0 1.4vmin 3vmin rgba(0,0,0,.5))}
+
+/* ---------- big number reveal ---------- */
+.bignum{font-family:var(--mono);font-size:clamp(44px,15vmin,170px);font-weight:500;line-height:1;color:var(--gold);letter-spacing:-.02em}
+.bignum small{font-family:var(--sans);font-size:2.6vmin;color:var(--ink-2);letter-spacing:.14em;text-transform:uppercase;display:block;margin-top:1.4vmin}
+
+/* ---------- countdown pre-roll ---------- */
+.preroll{font-family:var(--serif);font-size:34vmin;line-height:1;color:var(--gold);animation:pop .55s var(--ease)}
+@keyframes pop{0%{opacity:0;transform:scale(.55)}55%{opacity:1;transform:scale(1.06)}100%{opacity:1;transform:scale(1)}}
+
+/* ---------- the fact line: the payoff ---------- */
+.fact{max-width:74ch;margin:0 auto;font-size:clamp(14px,2.35vmin,26px);line-height:1.5;color:var(--ink-2);
+  border-left:.5vmin solid var(--gold);padding:.4vmin 0 .4vmin 2.4vmin;text-align:left;animation:rise .4s .18s var(--ease) both}
+.answerline{font-family:var(--serif);font-size:clamp(22px,5.4vmin,64px);color:var(--good);line-height:1.1;text-wrap:balance}
+.verdict{font-family:var(--mono);font-size:1.8vmin;letter-spacing:.3em;text-transform:uppercase;color:var(--dim)}
+
+/* ---------- scoring panel ---------- */
+.askwho{font-family:var(--mono);font-size:1.7vmin;letter-spacing:.3em;text-transform:uppercase;color:var(--dim)}
+.picks{display:flex;gap:1.8vmin;flex-wrap:wrap;justify-content:center;width:100%;max-width:150vmin}
+.pick{display:flex;align-items:center;gap:1.6vmin;background:var(--card);border:2px solid var(--line);border-radius:1.8vmin;
+  padding:2vmin 3vmin;font-size:clamp(15px,2.8vmin,32px);transition:all .18s var(--ease);min-width:26vmin}
+.pick .key{font-family:var(--mono);font-size:1.6vmin;color:var(--dim);border:1px solid var(--line);border-radius:.7vmin;padding:.3vmin .9vmin;flex:none}
+.pick .swatch{width:2.6vmin;height:2.6vmin;border-radius:.8vmin;flex:none}
+.pick .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pick .tick{font-size:2.6vmin;opacity:0;transition:opacity .18s;color:var(--good)}
+.pick.on{border-color:var(--good);background:rgba(61,220,151,.14)}
+.pick.on .tick{opacity:1}
+.pick:hover{border-color:var(--dim)}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:1.2vmin;background:var(--card);border:2px solid var(--line);
+  border-radius:1.4vmin;padding:1.7vmin 3.4vmin;font-size:clamp(14px,2.2vmin,24px);transition:all .18s var(--ease);white-space:nowrap}
+.btn:hover:not(:disabled){border-color:var(--dim);transform:translateY(-.2vmin)}
+.btn .key{font-family:var(--mono);font-size:1.5vmin;color:var(--dim);border:1px solid var(--line);border-radius:.6vmin;padding:.2vmin .8vmin}
+.btn.primary{background:var(--gold);border-color:var(--gold);color:#10140C;font-weight:600}
+.btn.primary .key{color:#5A4A08;border-color:rgba(0,0,0,.24)}
+.btn.primary:hover:not(:disabled){box-shadow:0 1.4vmin 3.4vmin -1.4vmin rgba(245,197,66,.85)}
+.btn.ghost{background:transparent}
+.btn.big{font-size:clamp(17px,3.1vmin,36px);padding:2.4vmin 5vmin;border-radius:1.8vmin}
+.btn.good{border-color:var(--good);color:var(--good)}
+.btn.bad{border-color:var(--bad);color:var(--bad)}
+.row{display:flex;gap:1.6vmin;flex-wrap:wrap;justify-content:center;align-items:center}
+
+/* ---------- setup ---------- */
+.setup{width:100%;max-width:118vmin;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:2vmin}
+.setup > .wide{grid-column:1 / -1}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:2.2vmin;padding:2.4vmin}
+.panel > .kicker{margin-bottom:1.8vmin}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:1.8vmin}
+.mode{background:var(--bg-2);border:2px solid var(--line);border-radius:1.8vmin;padding:2.2vmin;text-align:left;transition:all .2s var(--ease)}
+.mode:hover{border-color:var(--dim)}
+.mode.on{border-color:var(--gold);background:rgba(245,197,66,.08)}
+.mode h3{font-family:var(--serif);font-size:3vmin;line-height:1.1;margin-bottom:.8vmin}
+.mode p{font-size:1.72vmin;color:var(--ink-2);line-height:1.4}
+.mode .tagline{display:block;font-family:var(--mono);font-size:1.35vmin;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:1.2vmin}
+
+.teamrows{display:flex;flex-direction:column;gap:.9vmin}
+.teamrow{display:flex;align-items:center;gap:1.6vmin}
+.teamrow .swatch{width:2.8vmin;height:2.8vmin;border-radius:.9vmin;flex:none}
+.teamrow input{flex:1;min-width:0;background:var(--bg-2);border:1px solid var(--line);border-radius:1.1vmin;padding:1.15vmin 1.6vmin;font-size:1.9vmin}
+.teamrow input:focus{outline:none;border-color:var(--gold)}
+.teamrow .x{color:var(--dim);font-size:2.6vmin;padding:0 1.4vmin;line-height:1}
+.teamrow .x:hover{color:var(--bad)}
+
+.segs{display:flex;gap:1.1vmin;flex-wrap:wrap;flex-direction:column}
+.seg{background:var(--bg-2);border:2px solid var(--line);border-radius:1.2vmin;padding:1.2vmin 2.2vmin;font-size:1.9vmin;transition:all .18s var(--ease);text-align:left}
+.seg b{display:block;font-size:2.3vmin;font-weight:600;margin-bottom:.3vmin}
+.seg span{color:var(--dim);font-family:var(--mono);font-size:1.35vmin;letter-spacing:.12em;text-transform:uppercase}
+.seg.on{border-color:var(--gold);background:rgba(245,197,66,.08)}
+.seg.on span{color:var(--gold)}
+
+/* ---------- round card ---------- */
+.roundno{font-family:var(--mono);font-size:2vmin;letter-spacing:.42em;text-transform:uppercase;color:var(--gold)}
+.roundname{font-family:var(--serif);font-size:clamp(40px,11.5vmin,150px);line-height:.94;letter-spacing:-.02em;text-wrap:balance}
+.rule{font-size:clamp(15px,2.9vmin,34px);line-height:1.45;color:var(--ink-2);max-width:34ch;text-wrap:balance}
+.worth{display:inline-block;font-family:var(--mono);font-size:1.7vmin;letter-spacing:.22em;text-transform:uppercase;
+  border:1px solid var(--gold);color:var(--gold);border-radius:999px;padding:1vmin 2.4vmin}
+
+/* ---------- scoreboard ---------- */
+.board{width:100%;max-width:128vmin;margin:0 auto;display:flex;flex-direction:column;gap:1.6vmin}
+.brow{display:flex;align-items:center;gap:2.2vmin}
+.brow .rank{font-family:var(--mono);font-size:2.4vmin;color:var(--dim);width:4vmin;flex:none}
+.brow .nm{font-family:var(--serif);font-size:clamp(18px,4vmin,46px);width:30%;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.brow .track{flex:1;height:5vmin;background:var(--card);border-radius:1vmin;overflow:hidden}
+.brow .fill{height:100%;border-radius:1vmin;transform-origin:left;transition:width .9s var(--ease)}
+.brow .sc{font-family:var(--mono);font-size:clamp(20px,4.4vmin,52px);width:5ch;text-align:right;flex:none}
+.brow .delta{font-family:var(--mono);font-size:2vmin;color:var(--good);width:5ch;flex:none}
+.brow.lead .nm{color:var(--gold)}
+
+/* ---------- wager inputs ---------- */
+.betrows{display:flex;flex-direction:column;gap:1.6vmin;width:100%;max-width:100vmin;margin:0 auto}
+.betrow{display:flex;align-items:center;gap:2vmin;background:var(--card);border:2px solid var(--line);border-radius:1.6vmin;padding:2vmin 2.6vmin}
+.betrow .swatch{width:2.8vmin;height:2.8vmin;border-radius:.9vmin;flex:none}
+.betrow .nm{flex:1;font-size:clamp(15px,2.7vmin,30px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.betrow .have{font-family:var(--mono);font-size:1.7vmin;color:var(--dim);flex:none}
+.betrow input{width:12vmin;flex:none;background:var(--bg-2);border:2px solid var(--line);border-radius:1vmin;padding:1.2vmin;
+  font-family:var(--mono);font-size:2.8vmin;text-align:center}
+.betrow input:focus{outline:none;border-color:var(--gold)}
+.betrow .abcd{display:flex;gap:.8vmin;flex:none}
+.betrow .abcd button{width:5.4vmin;height:5.4vmin;border:2px solid var(--line);border-radius:1vmin;font-family:var(--mono);font-size:2.2vmin;color:var(--dim)}
+.betrow .abcd button.on{border-color:var(--gold);background:var(--gold);color:#10140C;font-weight:600}
+
+/* ---------- winner ---------- */
+.trophy{font-size:22vmin;line-height:1;animation:pop .7s var(--ease)}
+.winname{font-family:var(--serif);font-size:clamp(38px,11vmin,140px);line-height:1;letter-spacing:-.02em;text-wrap:balance}
+
+/* ---------- hint strip at the foot ---------- */
+.foot{flex:none;display:flex;gap:2.4vmin;justify-content:center;align-items:center;padding-top:2.4vmin;flex-wrap:wrap}
+.hint{font-family:var(--mono);font-size:1.4vmin;letter-spacing:.2em;text-transform:uppercase;color:#4B586B}
+.hint b{color:var(--dim);font-weight:400;border:1px solid #2A3547;border-radius:.5vmin;padding:.2vmin .7vmin;margin-right:.5vmin}
+
+/* flash for LOCK IN */
+.lockin{position:fixed;inset:0;display:grid;place-items:center;pointer-events:none;z-index:40}
+.lockin span{font-family:var(--serif);font-size:16vmin;color:var(--bad);opacity:0;animation:lockpulse 1s var(--ease)}
+@keyframes lockpulse{0%{opacity:0;transform:scale(.85)}30%{opacity:.95;transform:scale(1)}100%{opacity:0;transform:scale(1.12)}}
+
+/* portrait phones: stack the grids */
+@media (max-width:900px),(max-aspect-ratio:3/4){
+  .setup{grid-template-columns:1fr}
+}
+@media (max-aspect-ratio:3/4){
+  .screen{padding:5vw 5vw}
+  .wordmark{font-size:15vw}
+  .q{font-size:clamp(24px,7.6vw,44px)}
+  .opts,.tf,.modes{grid-template-columns:1fr}
+  .tiles{grid-template-columns:1fr 1fr}
+  .kicker,.hint{font-size:2.6vw}
+  .mini .m{font-size:3vw}
+  .emo{font-size:clamp(40px,18vw,110px)}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important;transition-duration:.01ms !important}
+}
+
+/* paused (party mode, space bar) */
+body.paused .timer i{filter:saturate(.2)}
+body.paused::after{content:"PAUSED";position:fixed;inset:0;display:grid;place-items:center;z-index:45;pointer-events:none;
+  font-family:var(--serif);font-size:14vmin;color:rgba(242,245,248,.14);letter-spacing:.06em}
