@@ -1,6 +1,6 @@
 /* pages/sessions.js — Sessions: every podcast shoot logged, and the sheet you export from it. */
 import { $, $$, el, esc, icons, uid, nowISO, num, fmtMoney, toast, modal, confirmDialog, menu, printHTML, download, debounce } from "../ui.js";
-import { todayISO, dmy, dayShort, monthLabel, ym, rangeFor, parse, today, iso, monday, weekLabel, weekShort, weekNo, addDays, relTime, DAY, MON } from "../dates.js";
+import { todayISO, dmy, dm, dayShort, monthLabel, ym, rangeFor, parse, today, iso, monday, weekLabel, weekShort, weekNo, addDays, relTime, DAY, MON, MONF } from "../dates.js";
 
 export const id = "sessions";
 export const title = "Sessions";
@@ -9,7 +9,11 @@ export const icon = "mic";
 export const DEFAULT_CFG = {
   locations: ["Dubai Hills", "Business Bay", "On location"],
   hours: [1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 8],
-  defaults: { location: "Dubai Hills", hours: 2, editing: true },
+  currency: "AED",
+  /* Short codes name the exports: "DH Podcast | September". Anything not listed falls
+     back to the initials of the location name, and every code is editable in Options. */
+  codes: { "Dubai Hills": "DH", "Business Bay": "VT" },
+  defaults: { location: "Dubai Hills", hours: 2, editing: true, fee: 0, editingFee: 0 },
 };
 
 let ctx, root, col, cfgDoc, intDoc, unsubs = [];
@@ -23,20 +27,55 @@ export function cfg() {
   if (!Array.isArray(c.locations) || !c.locations.length) c.locations = DEFAULT_CFG.locations.slice();
   if (!Array.isArray(c.hours) || !c.hours.length) c.hours = DEFAULT_CFG.hours.slice();
   c.defaults = { ...DEFAULT_CFG.defaults, ...(saved.defaults || {}) };
+  c.codes = { ...DEFAULT_CFG.codes, ...(saved.codes || {}) };
+  c.currency = saved.currency || DEFAULT_CFG.currency;
   return c;
 }
 export const hrs = h => `${fmtMoney(h, 2)}h`;
+/* "14:00 – 16:30" — and the hours between them, counting a late finish past midnight */
+export const timeRange = s => (s.start && s.end) ? `${s.start} – ${s.end}` : (s.start || "");
+export function hoursBetween(start, end) {
+  if (!start || !end) return null;
+  const [a, b] = [start, end].map(t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; });
+  let mins = b - a;
+  if (mins <= 0) mins += 24 * 60;
+  return Math.round((mins / 60) * 100) / 100;
+}
+export const cur = () => cfg().currency;
+export const money = v => fmtMoney(v, 2);
+
+/* ---------- what a session is worth ---------- */
+export const sessionFee = s => num(s.fee);
+export const editingFee = s => (s.editing ? num(s.editingFee) : 0);
+export const sessionTotal = s => (s.complimentary ? 0 : sessionFee(s) + editingFee(s));
+/* a session logged before prices existed, or one never priced, is "—" rather than a made-up 0 */
+export const priced = s => s.complimentary || s.fee !== undefined || s.editingFee !== undefined;
+
+/* the code that names an export: set in Options, otherwise the initials of the location */
+export function codeFor(location) {
+  const c = cfg();
+  if (c.codes?.[location]) return c.codes[location];
+  return String(location || "")
+    .split(/\s+/).filter(Boolean).map(w => w[0]).join("").toUpperCase().slice(0, 3) || "FW";
+}
+
 export function totals(list) {
   return {
     count: list.length,
     hours: list.reduce((a, s) => a + num(s.hours), 0),
     edited: list.filter(s => s.editing).length,
     clients: new Set(list.map(s => s.client).filter(Boolean)).size,
+    comp: list.filter(s => s.complimentary).length,
+    fees: list.reduce((a, s) => a + (s.complimentary ? 0 : sessionFee(s)), 0),
+    editFees: list.reduce((a, s) => a + (s.complimentary ? 0 : editingFee(s)), 0),
+    total: list.reduce((a, s) => a + sessionTotal(s), 0),
   };
 }
 export function newSession(over = {}) {
   const d = cfg().defaults;
-  return { id: uid(), date: todayISO(), client: "", hours: num(d.hours), location: d.location, editing: !!d.editing, notes: "", createdAt: nowISO(), updatedAt: nowISO(), ...over };
+  return { id: uid(), date: todayISO(), client: "", hours: num(d.hours), start: d.start || "", end: "", location: d.location, editing: !!d.editing,
+           fee: num(d.fee), editingFee: num(d.editingFee), complimentary: false,
+           notes: "", createdAt: nowISO(), updatedAt: nowISO(), ...over };
 }
 export const clients = () => Array.from(new Set(col.all().map(s => s.client).filter(Boolean))).sort();
 
@@ -131,7 +170,8 @@ const groupLabel = k => byWeek() ? weekLabel(k) : monthLabel(k);
 function paint() {
   if (!root?.isConnected) return;
   const owner = ctx.auth.isOwner;
-  const hideCli = ctx.auth.mask("sessionsClients");
+  const hideCli = ctx.auth.mask("sessionsClients"), hideAmt = ctx.auth.mask("sessionsAmounts");
+  const C = cur();
   const list = filtered(), t = totals(list);
   const ready = col.loaded !== false;
   const everything = totals(all());
@@ -159,8 +199,10 @@ function paint() {
   $("[data-figs]", root).innerHTML = ready
     ? fig(`Sessions · ${periodLabel()}`, t.count, "lead") +
       fig("Hours", `${fmtMoney(t.hours, 2)}<small>h</small>`) +
-      fig("With editing", t.edited)
-    : fig(`Sessions · ${periodLabel()}`, "—", "lead") + fig("Hours", "—") + fig("With editing", "—");
+      (hideAmt ? fig("With editing", t.edited)
+               : fig("Billed", `<em>${esc(C)}</em>${money(t.total)}`, "accent") +
+                 (t.comp ? fig("Complimentary", t.comp) : fig("With editing", t.edited)))
+    : fig(`Sessions · ${periodLabel()}`, "—", "lead") + fig("Hours", "—") + fig(hideAmt ? "With editing" : "Billed", "—");
 
   const tb = $("[data-table]", root);
   if (!ready) {
@@ -175,13 +217,13 @@ function paint() {
       : (owner ? `No sessions logged yet. <button type="button" class="btn primary sm" data-new-empty style="margin-left:8px">${icons.plus}Log a session</button>` : "No sessions logged yet.")}</div>`;
     return;
   }
-  const cols = 6 + (owner ? 1 : 0);
+  const cols = 6 + (hideAmt ? 0 : 1) + (owner ? 1 : 0);
   const groups = new Map();
   list.forEach(s => { const k = groupKey(s); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(s); });
   let i = 0, rows = "";
   Array.from(groups.keys()).sort().forEach(k => {
     const gs = groups.get(k), g = totals(gs);
-    rows += `<tr class="group"><td colspan="${cols}">${esc(groupLabel(k))} · ${g.count} session${g.count === 1 ? "" : "s"} · ${hrs(g.hours)}</td></tr>`;
+    rows += `<tr class="group"><td colspan="${cols}">${esc(groupLabel(k))} · ${g.count} session${g.count === 1 ? "" : "s"} · ${hrs(g.hours)}${hideAmt ? "" : ` · ${esc(C)} ${money(g.total)}`}</td></tr>`;
     gs.forEach(s => {
       i++;
       const ed = owner
@@ -189,20 +231,24 @@ function paint() {
         : `<span class="pill ${s.editing ? "sage" : "neutral"}"><i></i>${s.editing ? "Yes" : "No"}</span>`;
       rows += `<tr data-id="${s.id}" class="${owner ? "clickable" : ""}">
         <td class="dim num hide-mobile" style="text-align:left;width:36px">${i}</td>
-        <td class="date">${esc(dayShort(s.date))}</td>
+        <td class="date"><span class="hide-mobile">${esc(dayShort(s.date))}</span><span class="only-mobile">${esc(dm(s.date))}</span>${timeRange(s) ? `<div class="mono muted hide-mobile" style="font-size:10.5px;margin-top:3px">${esc(timeRange(s))}</div>` : ""}</td>
         <td><div class="desc-lines"><div class="l"><b>${hideCli ? "Client" : esc(s.client || "—")}</b></div>
-          <div class="l sub only-mobile">${esc(s.location || "—")} · ${hrs(s.hours)} · ${s.editing ? "editing" : "no editing"}</div>${s.notes ? `<div class="l sub muted" style="font-size:12.5px">${esc(s.notes)}</div>` : ""}</div></td>
-        <td class="nw hide-mobile">${esc(s.location || "—")}</td>
-        <td class="num hide-mobile">${hrs(s.hours)}</td>
-        <td class="hide-mobile">${ed}</td>
+          <div class="l sub only-narrow">${timeRange(s) ? `${esc(timeRange(s))} · ` : ""}${esc(s.location || "—")} · ${hrs(s.hours)}${s.editing && editingFee(s) && !s.complimentary ? ` · editing ${money(editingFee(s))}` : (s.editing ? " · editing" : "")}</div>${s.notes ? `<div class="l sub muted" style="font-size:12.5px">${esc(s.notes)}</div>` : ""}</div></td>
+        <td class="nw hide-narrow">${esc(s.location || "—")}</td>
+        <td class="num hide-narrow">${hrs(s.hours)}</td>
+        <td class="hide-narrow">${ed}</td>
+        ${hideAmt ? "" : `<td class="num">${amountCell(s)}</td>`}
         ${owner ? `<td class="r" style="width:1%"><div class="acts"><button type="button" class="icon-btn sm hide-mobile" data-edit title="Edit">${icons.edit}</button><button type="button" class="icon-btn sm" data-more title="More">${icons.more}</button></div></td>` : ""}
       </tr>`;
     });
   });
   tb.innerHTML = `<div class="tbl-wrap"><table class="tbl">
-    <thead><tr><th class="hide-mobile" style="width:36px">#</th><th>Date</th><th>Client</th><th class="hide-mobile">Location</th><th class="num hide-mobile">Hours</th><th class="hide-mobile">Editing</th>${owner ? "<th></th>" : ""}</tr></thead>
+    <thead><tr><th class="hide-mobile" style="width:36px">#</th><th>Date</th><th>Client</th><th class="hide-narrow">Location</th><th class="num hide-narrow">Hours</th><th class="hide-narrow">Editing</th>${hideAmt ? "" : `<th class="num">Amount</th>`}${owner ? "<th></th>" : ""}</tr></thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr class="subtotal"><td colspan="4" class="eyebrow" style="padding:12px 14px">Total<span class="only-mobile" style="text-transform:none;letter-spacing:0"> · ${hrs(t.hours)}</span></td><td class="num strong hide-mobile">${hrs(t.hours)}</td><td class="hide-mobile"></td>${owner ? "<td></td>" : ""}</tr></tfoot>
+    <tfoot>
+      <tr class="subtotal hide-narrow"><td colspan="4" class="eyebrow" style="padding:12px 14px">Total</td><td class="num strong">${hrs(t.hours)}</td><td></td>${hideAmt ? "" : `<td class="num strong">${esc(C)} ${money(t.total)}</td>`}${owner ? "<td></td>" : ""}</tr>
+      <tr class="subtotal only-narrow"><td colspan="${cols}" style="padding:12px 14px"><span class="eyebrow">Total</span> <span class="mono" style="margin-left:6px">${hrs(t.hours)}${hideAmt ? "" : ` · ${esc(C)} ${money(t.total)}`}</span></td></tr>
+    </tfoot>
   </table></div>`;
 }
 
@@ -223,6 +269,14 @@ function paintSub() {
   n.innerHTML = sh.url
     ? `${icons.sheet}<span>Google Sheet ${sh.lastError ? `<span style="color:var(--bad)">— ${esc(sh.lastError)}</span>` : (sh.lastPushAt ? `up to date · sent ${esc(relTime(sh.lastPushAt))}` : "connected")}</span>`
     : "Podcast shoots — client, hours, location and editing.";
+}
+
+/* One column, but it still shows what the money is made of. */
+function amountCell(s) {
+  if (s.complimentary) return `<span class="pill neutral" style="font-weight:500">Complimentary</span>`;
+  if (!priced(s)) return `<span class="dim">—</span>`;
+  const f = sessionFee(s), e = editingFee(s);
+  return `${money(f + e)}${f && e ? `<div class="mono muted hide-mobile" style="font-size:10.5px;margin-top:3px">${money(f)} + ${money(e)} editing</div>` : ""}`;
 }
 
 function onTableClick(e) {
@@ -265,12 +319,22 @@ export function openEditor(idOrNull, presets = {}) {
       <div class="field"><label for="zClient">Client</label><input class="inp" id="zClient" list="fw-session-clients" value="${esc(s.client)}" placeholder="Who the session is for" autocomplete="off" autofocus><datalist id="fw-session-clients">${clients().map(x => `<option value="${esc(x)}">`).join("")}</datalist></div>
     </div>
     <div class="grid-3">
+      <div class="field"><label for="zStart">From</label><input class="inp mono" type="time" id="zStart" value="${esc(s.start || "")}"></div>
+      <div class="field"><label for="zEnd">To</label><input class="inp mono" type="time" id="zEnd" value="${esc(s.end || "")}"></div>
       <div class="field"><label for="zHours">Hours</label><select class="inp" id="zHours">${hourOpts.map(h => `<option value="${h}" ${num(s.hours) === h ? "selected" : ""}>${fmtMoney(h, 2)} ${h === 1 ? "hour" : "hours"}</option>`).join("")}</select></div>
+    </div>
+    <div class="grid-2">
       <div class="field"><label for="zLoc">Location</label><select class="inp" id="zLoc">${locOpts.map(l => `<option ${l === s.location ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
       <div class="field"><label for="zEdit">Editing services</label><select class="inp" id="zEdit"><option value="yes" ${s.editing ? "selected" : ""}>Yes</option><option value="no" ${s.editing ? "" : "selected"}>No</option></select></div>
     </div>
+    <div class="grid-3">
+      <div class="field"><label for="zBilling">Billing</label><select class="inp" id="zBilling"><option value="charged" ${s.complimentary ? "" : "selected"}>Charged</option><option value="free" ${s.complimentary ? "selected" : ""}>Complimentary</option></select></div>
+      <div class="field"><label for="zFee">Session fee (${esc(c.currency)})</label><input class="inp mono" id="zFee" type="number" step="any" min="0" value="${esc(s.fee ?? "")}" placeholder="0"></div>
+      <div class="field" data-efee-wrap><label for="zEFee">Editing fee (${esc(c.currency)})</label><input class="inp mono" id="zEFee" type="number" step="any" min="0" value="${esc(s.editingFee ?? "")}" placeholder="0"></div>
+    </div>
+    <div class="line-total"><span class="eyebrow">Total for this session</span><span class="v" data-ztotal>—</span></div>
     <div class="field"><label for="zNotes">Notes</label><input class="inp" id="zNotes" value="${esc(s.notes || "")}" placeholder="Guest, episode, anything useful"></div>
-    <p class="hint">Locations and the hours list live in <b>Options</b>.</p>
+    <p class="hint">Locations, codes and the standard prices live in <b>Options</b>.</p>
   </div>`);
   const foot = el(`<div class="row" style="width:100%">
     <button type="button" class="btn primary" data-save>${existing ? "Save changes" : "Log session"}</button>
@@ -278,12 +342,44 @@ export function openEditor(idOrNull, presets = {}) {
     ${existing ? `<button type="button" class="btn danger" data-delete>Delete</button>` : ""}</div>`);
   const m = modal({ title: existing ? "Edit session" : "Log a session", body, footer: foot });
 
+  /* give the times and the hours dropdown to each other: fill both ends and the hours follow */
+  const startI = $("#zStart", body), endI = $("#zEnd", body), hoursSel = $("#zHours", body);
+  function syncHours() {
+    const h = hoursBetween(startI.value, endI.value);
+    if (h === null || h <= 0) return;
+    if (![...hoursSel.options].some(o => num(o.value) === h)) {
+      const o = document.createElement("option");
+      o.value = String(h); o.textContent = `${fmtMoney(h, 2)} ${h === 1 ? "hour" : "hours"}`;
+      hoursSel.appendChild(o);
+      [...hoursSel.options].sort((a, b) => num(a.value) - num(b.value)).forEach(x => hoursSel.appendChild(x));
+    }
+    hoursSel.value = String(h);
+  }
+  [startI, endI].forEach(n => n.addEventListener("change", syncHours));
+
+  /* editing fee only means something when there is editing; complimentary zeroes the lot */
+  const billing = $("#zBilling", body), fee = $("#zFee", body), efee = $("#zEFee", body), edSel = $("#zEdit", body);
+  function paintMoney() {
+    const free = billing.value === "free", hasEdit = edSel.value === "yes";
+    fee.disabled = free; efee.disabled = free || !hasEdit;
+    $("[data-efee-wrap]", body).style.opacity = hasEdit ? "1" : ".45";
+    const totalNow = free ? 0 : num(fee.value) + (hasEdit ? num(efee.value) : 0);
+    $("[data-ztotal]", body).textContent = free ? "Complimentary" : `${c.currency} ${money(totalNow)}`;
+  }
+  [billing, fee, efee, edSel].forEach(n => { n.addEventListener("input", paintMoney); n.addEventListener("change", paintMoney); });
+  paintMoney();
+
   function save() {
     s.date = $("#zDate", body).value || todayISO();
     s.client = $("#zClient", body).value.trim();
+    s.start = startI.value || "";
+    s.end = endI.value || "";
     s.hours = num($("#zHours", body).value);
     s.location = $("#zLoc", body).value;
     s.editing = $("#zEdit", body).value === "yes";
+    s.complimentary = billing.value === "free";
+    s.fee = s.complimentary ? 0 : num(fee.value);
+    s.editingFee = s.complimentary || !s.editing ? 0 : num(efee.value);
     s.notes = $("#zNotes", body).value.trim();
     if (!s.client) { toast("Add the client name", { error: true }); $("#zClient", body).focus(); return; }
     s.updatedAt = nowISO();
@@ -332,8 +428,14 @@ function openOptions() {
         <div class="field"><label for="oDefLoc">Location</label><select class="inp" id="oDefLoc"></select></div>
         <div class="field"><label for="oDefEdit">Editing</label><select class="inp" id="oDefEdit"><option value="yes" ${c.defaults.editing ? "selected" : ""}>Yes</option><option value="no" ${c.defaults.editing ? "" : "selected"}>No</option></select></div>
       </div>
+      <div class="grid-3 mt-8">
+        <div class="field"><label for="oCur">Currency</label><input class="inp mono" id="oCur" maxlength="6" value="${esc(c.currency)}"></div>
+        <div class="field"><label for="oDefFee">Session fee</label><input class="inp mono" id="oDefFee" type="number" step="any" min="0" value="${esc(c.defaults.fee)}"></div>
+        <div class="field"><label for="oDefEFee">Editing fee</label><input class="inp mono" id="oDefEFee" type="number" step="any" min="0" value="${esc(c.defaults.editingFee)}"></div>
+      </div>
+      <span class="hint">Your usual prices — filled in on every new session, and changeable on each one.</span>
     </div>
-    <p class="hint">Renaming a location leaves past sessions exactly as they were logged.</p>
+    <p class="hint">Renaming a location leaves past sessions exactly as they were logged. The short code names your exports: <b>DH Podcast | September</b>.</p>
     <div class="divider" style="margin:2px 0"></div>
     <div class="field"><label>Google Sheet</label>
       <p class="hint" style="margin:-2px 0 8px">Every session you log is written into a Google Sheet, so your manager only needs the sheet link — nothing to send, nothing to export by hand.</p>
@@ -361,7 +463,8 @@ function openOptions() {
   function paintLocs() {
     $('[data-list="locations"]', body).innerHTML = c.locations.map((l, i) => `<div class="rate-line" data-i="${i}" style="margin-bottom:6px">
       <input class="inp nm" data-k="name" value="${esc(l)}" placeholder="Location name">
-      ${usedLoc(l) ? `<span class="used">${usedLoc(l)} session${usedLoc(l) === 1 ? "" : "s"}</span>` : ""}
+      <input class="inp mono" data-k="code" value="${esc(c.codes?.[l] ?? codeFor(l))}" maxlength="4" placeholder="DH" aria-label="Short code for exports" title="Names the export: “DH Podcast | September”" style="width:70px;text-transform:uppercase">
+      ${usedLoc(l) ? `<span class="used">${usedLoc(l)}</span>` : ""}
       <button type="button" class="icon-btn sm danger" data-rm aria-label="Remove">${icons.x}</button>
     </div>`).join("");
     const d = $("#oDefLoc", body);
@@ -369,7 +472,11 @@ function openOptions() {
   }
   body.addEventListener("input", ev => {
     if (!ev.target.closest('[data-list="locations"]')) return;
-    c.locations[Number(ev.target.closest("[data-i]").dataset.i)] = ev.target.value;
+    const i = Number(ev.target.closest("[data-i]").dataset.i), was = c.locations[i];
+    if (ev.target.dataset.k === "code") { c.codes = { ...c.codes, [was]: ev.target.value.toUpperCase() }; return; }
+    const code = c.codes?.[was];
+    c.locations[i] = ev.target.value;
+    if (code) { c.codes = { ...c.codes, [ev.target.value]: code }; }   // keep the code with the renamed location
   });
   body.addEventListener("click", ev => {
     const rm = ev.target.closest("[data-rm]");
@@ -398,7 +505,13 @@ function openOptions() {
     if (!c.locations.length) c.locations = DEFAULT_CFG.locations.slice();
     const hoursList = $("#oHours", body).value.split(",").map(x => num(x)).filter(x => x > 0);
     c.hours = Array.from(new Set(hoursList.length ? hoursList : DEFAULT_CFG.hours)).sort((a, b) => a - b);
-    c.defaults = { hours: num($("#oDefHours", body).value) || c.hours[0], location: $("#oDefLoc", body).value || c.locations[0], editing: $("#oDefEdit", body).value === "yes" };
+    c.currency = ($("#oCur", body).value.trim() || "AED").toUpperCase();
+    c.defaults = { hours: num($("#oDefHours", body).value) || c.hours[0], location: $("#oDefLoc", body).value || c.locations[0], editing: $("#oDefEdit", body).value === "yes",
+                   fee: num($("#oDefFee", body).value), editingFee: num($("#oDefEFee", body).value) };
+    // drop codes for locations that no longer exist, and make sure every one that does has a code
+    const codes = {};
+    c.locations.forEach(l => { codes[l] = (c.codes?.[l] || codeFor(l)).toUpperCase(); });
+    c.codes = codes;
     cfgDoc.replace(c); m.close(); toast("Options saved");
     if (sheet().url) pushSheet().then(r => { if (r.ok && !r.skipped) toast("Google Sheet updated"); paintSub(); });
   });
@@ -410,35 +523,46 @@ function openOptions() {
    so a manager can just open the sheet link. The whole table is sent each time, which
    keeps the sheet correct after edits and deletions without any diffing. */
 export const sheet = () => ({ url: "", lastSig: "", lastPushAt: "", ...(intDoc?.get()?.sheet || {}) });
-const SHEET_HEAD = ["Date", "Client", "Location", "Hours", "Editing", "Notes"];
-const MONTH_HEAD = ["Month", "Sessions", "Hours", "With editing", "Without editing"];
+const SHEET_HEAD = ["Date", "From", "To", "Client", "Location", "Hours", "Editing", "Billing", "Session", "Editing fee", "Total", "Notes"];
+const MONTH_HEAD = ["Month", "Sessions", "Hours", "With editing", "Complimentary", "Session fees", "Editing fees", "Total"];
 
 /* The sheet is laid out exactly like the table on this page: month band, its sessions
    in date order, and a total at the end. The script in the sheet is a plain renderer,
    so the layout can change here without ever touching Google again. */
 function sheetPayload() {
   const list = all(), t = totals(list);
+  const C = cur(), blank = new Array(SHEET_HEAD.length - 1).fill("");
   const grid = [SHEET_HEAD.slice()], bands = [];
   grouped(list, "month").forEach(g => {
     bands.push(grid.length + 1);
-    grid.push([`${g.label}  ·  ${g.count} session${g.count === 1 ? "" : "s"}  ·  ${fmtMoney(g.hours, 2)}h  ·  ${g.edited} with editing`, "", "", "", "", ""]);
-    g.rows.forEach(x => grid.push([x.date || "", x.client || "", x.location || "", num(x.hours), x.editing ? "Yes" : "No", x.notes || ""]));
+    grid.push([`${g.label}  ·  ${g.count} session${g.count === 1 ? "" : "s"}  ·  ${fmtMoney(g.hours, 2)}h  ·  ${C} ${fmtMoney(g.total, 2)}`, ...blank]);
+    g.rows.forEach(x => grid.push([
+      x.date || "", x.start || "", x.end || "", x.client || "", x.location || "", num(x.hours), x.editing ? "Yes" : "No",
+      x.complimentary ? "Complimentary" : "Charged",
+      x.complimentary ? 0 : sessionFee(x), x.complimentary ? 0 : editingFee(x), sessionTotal(x),
+      x.notes || "",
+    ]));
   });
-  if (!list.length) grid.push(["No sessions logged yet", "", "", "", "", ""]);
+  if (!list.length) grid.push(["No sessions logged yet", ...blank]);
   const total = grid.length + 1;
-  grid.push([`Total  ·  ${t.count} session${t.count === 1 ? "" : "s"}`, "", "", t.hours, `${t.edited} with editing`, ""]);
+  grid.push([`Total  ·  ${t.count} session${t.count === 1 ? "" : "s"}`, "", "", "", "", t.hours, `${t.edited} with editing`,
+             t.comp ? `${t.comp} complimentary` : "", t.fees, t.editFees, t.total, ""]);
 
-  const months = [MONTH_HEAD.slice(), ...grouped(list, "month").map(g => [g.label, g.count, g.hours, g.edited, g.count - g.edited])];
+  const months = [MONTH_HEAD.slice(), ...grouped(list, "month").map(g => [g.label, g.count, g.hours, g.edited, g.comp, g.fees, g.editFees, g.total])];
   const mTotal = months.length + 1;
-  months.push(["Total", t.count, t.hours, t.edited, t.count - t.edited]);
+  months.push(["Total", t.count, t.hours, t.edited, t.comp, t.fees, t.editFees, t.total]);
 
   return {
     app: "flowork-backstage", v: 2, generatedAt: nowISO(),
     sheets: [
-      { name: "Sessions", grid, bands, total, formats: ["ddd d mmm yyyy", "", "", '0.##"h"', "", ""], widths: [140, 170, 130, 70, 80, 280] },
-      { name: "By month", grid: months, bands: [], total: mTotal, formats: ["", "0", '0.##"h"', "0", "0"], widths: [140, 90, 80, 110, 130] },
+      { name: "Sessions", grid, bands, total,
+        formats: ["ddd d mmm yyyy", "", "", "", "", '0.##"h"', "", "", "#,##0.00", "#,##0.00", "#,##0.00", ""],
+        widths: [140, 70, 70, 170, 130, 70, 70, 110, 95, 95, 95, 220] },
+      { name: "By month", grid: months, bands: [], total: mTotal,
+        formats: ["", "0", '0.##"h"', "0", "0", "#,##0.00", "#,##0.00", "#,##0.00"],
+        widths: [140, 90, 80, 110, 120, 110, 110, 110] },
     ],
-    totals: { sessions: t.count, hours: t.hours, editing: t.edited },
+    totals: { sessions: t.count, hours: t.hours, editing: t.edited, complimentary: t.comp, amount: t.total, currency: C },
   };
 }
 const sig = str => { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return String(h); };
@@ -557,6 +681,7 @@ function openExport() {
     </div>
     <label class="check"><input type="checkbox" data-xnotes checked><span>Include notes (session rows only)</span></label>
     <p class="hint" data-xcount></p>
+    <div class="line-total" style="padding-top:10px"><span class="eyebrow">Saves as</span><span class="mono" data-xname style="font-size:13px"></span></div>
   </div>`);
   const foot = el(`<div class="row wrap" style="width:100%"><button type="button" class="btn primary" data-csv>${icons.download}Download CSV</button><button type="button" class="btn" data-print>${icons.print}Print / PDF</button></div>`);
   const m = modal({ title: "Export sessions", body, footer: foot });
@@ -570,7 +695,12 @@ function openExport() {
       list: all().filter(s => (!from || s.date >= from) && (!to || s.date <= to) && (!loc || s.location === loc)),
     };
   };
-  const count = () => { const { list } = sel(); const t = totals(list); $("[data-xcount]", body).textContent = `${t.count} session${t.count === 1 ? "" : "s"} · ${hrs(t.hours)} · ${t.edited} with editing`; };
+  const count = () => {
+    const s0 = sel(), t = totals(s0.list);
+    $("[data-xcount]", body).textContent = `${t.count} session${t.count === 1 ? "" : "s"} · ${hrs(t.hours)} · ${t.edited} with editing`
+      + (ctx.auth.mask("sessionsAmounts") ? "" : ` · ${cur()} ${money(t.total)}${t.comp ? ` · ${t.comp} complimentary` : ""}`);
+    $("[data-xname]", body).textContent = exportName(s0);
+  };
   $$("[data-xr]", body).forEach(b => b.addEventListener("click", () => {
     $$("[data-xr]", body).forEach(x => x.setAttribute("aria-pressed", "false"));
     b.setAttribute("aria-pressed", "true");
@@ -596,66 +726,122 @@ function grouped(list, by) {
   return keys.map(k => ({ key: k, label: label(k), rows: map.get(k), ...totals(map.get(k)) }));
 }
 const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-function downloadCSV({ list, from, to, group, notes }) {
-  const hideCli = ctx.auth.mask("sessionsClients");
-  const nameOf = s => hideCli ? "Client" : s.client;
+
+/* ---------- what an export is called ----------
+   "DH Podcast | September" — the location's short code, then the period it covers. */
+function periodName(from, to) {
+  if (!from && !to) return "All time";
+  const a = parse(from || to), b = parse(to || from);
+  const yr = new Date().getFullYear();
+  const sameMonth = a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+  if (sameMonth) return MONF[a.getMonth()] + (a.getFullYear() === yr ? "" : ` ${a.getFullYear()}`);
+  if (a.getFullYear() === b.getFullYear()) {
+    const wholeYear = a.getMonth() === 0 && a.getDate() === 1 && b.getMonth() === 11 && b.getDate() === 31;
+    return wholeYear ? String(a.getFullYear()) : `${MON[a.getMonth()]}–${MON[b.getMonth()]} ${a.getFullYear()}`;
+  }
+  return `${MON[a.getMonth()]} ${a.getFullYear()} – ${MON[b.getMonth()]} ${b.getFullYear()}`;
+}
+export function exportName({ list = [], from, to, loc }) {
+  // an explicit location wins; otherwise, if everything in range is one location, use that
+  let where = loc;
+  if (!where) {
+    const set = new Set(list.map(x => x.location).filter(Boolean));
+    if (set.size === 1) where = [...set][0];
+  }
+  return `${where ? codeFor(where) : "flowork"} Podcast | ${periodName(from, to)}`;
+}
+
+function downloadCSV(sel) {
+  const { list, group, notes } = sel;
+  const hideCli = ctx.auth.mask("sessionsClients"), hideAmt = ctx.auth.mask("sessionsAmounts");
+  const nameOf = x => hideCli ? "Client" : x.client;
+  const C = cur();
   let head, rows;
   if (group === "none") {
-    head = ["Date", "Day", "Week", "Month", "Client", "Location", "Hours", "Editing"].concat(notes ? ["Notes"] : []);
-    rows = list.map(s => {
-      const d = parse(s.date);
-      return [s.date, d ? DAY[d.getDay()] : "", d ? `W${weekNo(d)}` : "", monthLabel(ym(s.date)), nameOf(s), s.location, num(s.hours), s.editing ? "Yes" : "No"]
-        .concat(notes ? [s.notes || ""] : []).map(q).join(",");
+    head = ["Date", "Day", "Week", "Month", "From", "To", "Client", "Location", "Hours", "Editing"]
+      .concat(hideAmt ? [] : ["Billing", `Session (${C})`, `Editing (${C})`, `Total (${C})`])
+      .concat(notes ? ["Notes"] : []);
+    rows = list.map(x => {
+      const d = parse(x.date);
+      return [x.date, d ? DAY[d.getDay()] : "", d ? `W${weekNo(d)}` : "", monthLabel(ym(x.date)), x.start || "", x.end || "", nameOf(x), x.location, num(x.hours), x.editing ? "Yes" : "No"]
+        .concat(hideAmt ? [] : [x.complimentary ? "Complimentary" : "Charged", x.complimentary ? 0 : sessionFee(x), x.complimentary ? 0 : editingFee(x), sessionTotal(x)])
+        .concat(notes ? [x.notes || ""] : []).map(q).join(",");
     });
     const t = totals(list);
-    rows.push(["TOTAL", "", "", "", `${t.clients} clients`, "", t.hours, `${t.edited} with editing`].concat(notes ? [""] : []).map(q).join(","));
+    rows.push(["TOTAL", "", "", "", "", "", `${t.clients} clients`, "", t.hours, `${t.edited} with editing`]
+      .concat(hideAmt ? [] : [`${t.comp} complimentary`, t.fees, t.editFees, t.total])
+      .concat(notes ? [""] : []).map(q).join(","));
   } else {
     const label = { week: "Week", month: "Month", client: "Client", location: "Location" }[group];
-    const withClients = group !== "client";        // a client group is always one client
-    head = [label, "Sessions", "Hours", "With editing", "Without editing"].concat(withClients ? ["Clients"] : []);
-    const gs = grouped(list, group);
-    rows = gs.map(g => [g.label, g.count, g.hours, g.edited, g.count - g.edited].concat(withClients ? [g.clients] : []).map(q).join(","));
+    const withClients = group !== "client";
+    head = [label, "Sessions", "Hours", "With editing", "Without editing"]
+      .concat(withClients ? ["Clients"] : [])
+      .concat(hideAmt ? [] : ["Complimentary", `Session (${C})`, `Editing (${C})`, `Total (${C})`]);
+    rows = grouped(list, group).map(g => [g.label, g.count, g.hours, g.edited, g.count - g.edited]
+      .concat(withClients ? [g.clients] : [])
+      .concat(hideAmt ? [] : [g.comp, g.fees, g.editFees, g.total]).map(q).join(","));
     const t = totals(list);
-    rows.push(["TOTAL", t.count, t.hours, t.edited, t.count - t.edited].concat(withClients ? [t.clients] : []).map(q).join(","));
+    rows.push(["TOTAL", t.count, t.hours, t.edited, t.count - t.edited]
+      .concat(withClients ? [t.clients] : [])
+      .concat(hideAmt ? [] : [t.comp, t.fees, t.editFees, t.total]).map(q).join(","));
   }
-  const stamp = (!from && !to) ? "all" : `${from || "start"}_${to || todayISO()}`;
-  download(`flowork-sessions-${group === "none" ? "" : group + "-"}${stamp}.csv`, "﻿" + [head.map(q).join(","), ...rows].join("\r\n"), "text/csv;charset=utf-8");
-  toast("CSV downloaded — opens straight in Sheets or Excel");
+  download(`${exportName(sel)}.csv`, "﻿" + [head.map(q).join(","), ...rows].join("\r\n"), "text/csv;charset=utf-8");
+  toast("Downloaded — opens straight in Sheets or Excel");
 }
-function printSheet({ list, from, to, group, notes, loc }) {
-  const t = totals(list), p = ctx.profile();
-  const hideCli = ctx.auth.mask("sessionsClients");
-  const period = (!from && !to) ? "All sessions" : `${from ? dmy(from) : "start"} – ${to ? dmy(to) : "today"}`;
+
+/* ---------- the printed sheet ----------
+   Deliberately plain: a letterhead, one line of figures, one table, one total. The saved
+   PDF takes its name from document.title, so that is set to the export name first. */
+function printSheet(sel) {
+  const { list, from, to, group, notes, loc } = sel;
+  const t = totals(list), p = ctx.profile(), C = cur();
+  const hideCli = ctx.auth.mask("sessionsClients"), hideAmt = ctx.auth.mask("sessionsAmounts");
+  const name = exportName(sel);
+  const where = loc || (new Set(list.map(x => x.location).filter(Boolean)).size === 1 ? [...new Set(list.map(x => x.location))][0] : "");
+  const showLoc = !where;                                   // no point repeating one location on every row
+  const amt = v => `${fmtMoney(v, 2)}`;
+
+  const summary = [`${t.count} session${t.count === 1 ? "" : "s"}`, hrs(t.hours), `${t.edited} with editing`]
+    .concat(t.comp ? [`${t.comp} complimentary`] : [])
+    .concat(hideAmt ? [] : [`<b>${esc(C)} ${amt(t.total)}</b>`]).join("<span class='dot'>·</span>");
+
   let table;
   if (group === "none") {
-    let i = 0, rows = "";
     const gs = grouped(list, "month");
+    const anyTime = list.some(x => x.start);
+    const cols = 4 + (anyTime ? 1 : 0) + (showLoc ? 1 : 0) + (hideAmt ? 0 : 3);
+    let rows = "";
     gs.forEach(g => {
-      if (gs.length > 1) rows += `<tr class="grp"><td colspan="6">${esc(g.label)} · ${g.count} session${g.count === 1 ? "" : "s"} · ${hrs(g.hours)}</td></tr>`;
-      g.rows.forEach(s => {
-        i++;
-        rows += `<tr><td class="n" style="text-align:left;color:#858B84">${i}</td><td class="d">${esc(dayShort(s.date))}</td><td>${hideCli ? "Client" : esc(s.client || "—")}${notes && s.notes ? `<div style="color:#858B84;font-size:8pt">${esc(s.notes)}</div>` : ""}</td><td>${esc(s.location || "—")}</td><td class="n">${hrs(s.hours)}</td><td><span class="pill ${s.editing ? "done" : "idle"}">${s.editing ? "Yes" : "No"}</span></td></tr>`;
+      if (gs.length > 1) rows += `<tr class="grp"><td colspan="${cols}">${esc(g.label)} — ${g.count} session${g.count === 1 ? "" : "s"}, ${hrs(g.hours)}${hideAmt ? "" : `, ${esc(C)} ${amt(g.total)}`}</td></tr>`;
+      g.rows.forEach(x => {
+        rows += `<tr><td class="d">${esc(dayShort(x.date))}</td>${anyTime ? `<td class="d">${esc(timeRange(x) || "—")}</td>` : ""}<td>${hideCli ? "Client" : esc(x.client || "—")}${notes && x.notes ? `<div class="sub">${esc(x.notes)}</div>` : ""}</td>${showLoc ? `<td>${esc(x.location || "—")}</td>` : ""}<td class="n">${hrs(x.hours)}</td><td>${x.editing ? "Yes" : "No"}</td>${hideAmt ? "" : (x.complimentary
+          ? `<td class="n">—</td><td class="n">—</td><td class="n">Complimentary</td>`
+          : `<td class="n">${priced(x) ? amt(sessionFee(x)) : "—"}</td><td class="n">${x.editing ? amt(editingFee(x)) : "—"}</td><td class="n b">${priced(x) ? amt(sessionTotal(x)) : "—"}</td>`)}</tr>`;
       });
     });
-    table = `<table><thead><tr><th>#</th><th>Date</th><th>Client</th><th>Location</th><th class="r">Hours</th><th>Editing</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="6">No sessions in this period.</td></tr>`}</tbody>
-      <tfoot><tr><td colspan="3" style="font-family:var(--mono);font-size:7pt;letter-spacing:.1em;text-transform:uppercase;color:#858B84">Totals</td><td>${t.clients} client${t.clients === 1 ? "" : "s"}</td><td class="n">${hrs(t.hours)}</td><td>${t.edited} with editing</td></tr></tfoot></table>`;
+    table = `<table><thead><tr><th>Date</th>${anyTime ? "<th>Time</th>" : ""}<th>Client</th>${showLoc ? "<th>Location</th>" : ""}<th class="r">Hours</th><th>Editing</th>${hideAmt ? "" : `<th class="r">Session</th><th class="r">Editing</th><th class="r">Total</th>`}</tr></thead>
+      <tbody>${rows || `<tr><td colspan="${cols}">No sessions in this period.</td></tr>`}</tbody>
+      <tfoot><tr><td colspan="${2 + (anyTime ? 1 : 0) + (showLoc ? 1 : 0)}">Total</td><td class="n">${hrs(t.hours)}</td><td></td>${hideAmt ? "" : `<td class="n">${amt(t.fees)}</td><td class="n">${amt(t.editFees)}</td><td class="n b">${esc(C)} ${amt(t.total)}</td>`}</tr></tfoot></table>`;
   } else {
     const label = { week: "Week", month: "Month", client: "Client", location: "Location" }[group];
-    const rows = grouped(list, group).map(g => `<tr><td>${esc(group === "client" && hideCli ? "Client" : g.label)}</td><td class="n">${g.count}</td><td class="n">${hrs(g.hours)}</td><td class="n">${g.edited}</td><td class="n">${g.count - g.edited}</td></tr>`).join("");
-    table = `<table><thead><tr><th>${esc(label)}</th><th class="r">Sessions</th><th class="r">Hours</th><th class="r">With editing</th><th class="r">Without</th></tr></thead>
+    const rows = grouped(list, group).map(g => `<tr><td>${esc(group === "client" && hideCli ? "Client" : g.label)}</td><td class="n">${g.count}</td><td class="n">${hrs(g.hours)}</td><td class="n">${g.edited}</td>${hideAmt ? "" : `<td class="n b">${amt(g.total)}</td>`}</tr>`).join("");
+    table = `<table><thead><tr><th>${esc(label)}</th><th class="r">Sessions</th><th class="r">Hours</th><th class="r">With editing</th>${hideAmt ? "" : `<th class="r">Total (${esc(C)})</th>`}</tr></thead>
       <tbody>${rows || `<tr><td colspan="5">No sessions in this period.</td></tr>`}</tbody>
-      <tfoot><tr><td style="font-family:var(--mono);font-size:7pt;letter-spacing:.1em;text-transform:uppercase;color:#858B84">Totals</td><td class="n">${t.count}</td><td class="n">${hrs(t.hours)}</td><td class="n">${t.edited}</td><td class="n">${t.count - t.edited}</td></tr></tfoot></table>`;
+      <tfoot><tr><td>Total</td><td class="n">${t.count}</td><td class="n">${hrs(t.hours)}</td><td class="n">${t.edited}</td>${hideAmt ? "" : `<td class="n b">${amt(t.total)}</td>`}</tr></tfoot></table>`;
   }
+
+  const prev = document.title;
+  document.title = name;                     // this is what the saved PDF gets called
+  const restore = () => { document.title = prev; };
+  window.addEventListener("afterprint", restore, { once: true });
+  setTimeout(restore, 60000);                // belt and braces if afterprint never fires
+
   printHTML(`
-    <div class="p-head"><div><div class="p-brand">flowork<i>.</i></div><div class="p-sub">Podcast sessions${loc ? ` · ${esc(loc)}` : ""}</div></div>
-      <div class="p-title"><div class="t">Session sheet</div><div class="d">${esc(period)} · issued ${dmy(todayISO())}</div><div class="d">${esc(p.name)}</div></div></div>
-    <div class="p-stats">
-      <div class="p-stat"><div class="k">Sessions</div><div class="v">${t.count}</div></div>
-      <div class="p-stat"><div class="k">Hours</div><div class="v">${fmtMoney(t.hours, 2)}</div></div>
-      <div class="p-stat paid"><div class="k">With editing</div><div class="v">${t.edited}</div></div>
-      <div class="p-stat"><div class="k">Without editing</div><div class="v">${t.count - t.edited}</div></div>
-      <div class="p-stat"><div class="k">Clients</div><div class="v">${t.clients}</div></div></div>
+    <div class="p-head">
+      <div><div class="p-brand">flowork<i>.</i></div><div class="p-sub">Podcast sessions</div></div>
+      <div class="p-title"><div class="t">${esc(where ? `${where}` : "All locations")}</div><div class="d">${esc(periodName(from, to))}</div></div>
+    </div>
+    <div class="p-sum">${summary}</div>
     ${table}
-    <div class="p-foot"><span>flowork. session sheet · ${esc(period)}</span><span>${GROUPINGS.find(g => g[0] === group)?.[1] || ""}</span></div>`);
+    <div class="p-foot"><span>${esc(p.name)} · flowork</span><span>Issued ${esc(dmy(todayISO()))}</span></div>`);
 }

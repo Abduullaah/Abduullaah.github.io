@@ -155,7 +155,7 @@ function paintDynamic() {
   $("[data-vis]", root).innerHTML =
     rowV("home", "Home", "The preview page: what is on, this week, and figures for whatever else is shared.") +
     rowV("tasks", "Tasks", "Tasks and productions week by week, plus the People subtab.", sw("tasksPeople", "Show who gave each task", "Names of colleagues in Given by") + sw("tasksNotes", "Show notes", "Blockers and comments")) +
-    rowV("sessions", "Sessions", "Podcast shoots: date, client, location, hours and editing.", sw("sessionsClients", "Show client names", "Off: clients appear as “Client”")) +
+    rowV("sessions", "Sessions", "Podcast shoots: date, client, location, hours, editing and what each one was billed at.", sw("sessionsClients", "Show client names", "Off: clients appear as “Client”") + sw("sessionsAmounts", "Show amounts", "Off: guests see sessions and hours, never the money")) +
     rowV("commission", "Commission", "Sales and commission. Off by default — this is your money.", sw("commissionAmounts", "Show amounts", "Off: guests only see counts and statuses") + sw("commissionClients", "Show client names", "Off: clients appear as “Client”"));
   $$("[data-vis]", root).forEach(i => i.addEventListener("change", () => { ctx.store.settings.set({ visibility: { ...ctx.auth.vis(), [i.dataset.vis]: i.checked } }); }));
   const on = ["home", "tasks", "sessions", "commission"].filter(k => vis[k]);

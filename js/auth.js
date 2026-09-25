@@ -130,7 +130,7 @@ export const auth = {
   },
 
   /* ---------- visibility (what guests can see) ---------- */
-  DEFAULT_VIS: { home: true, tasks: true, sessions: false, commission: false, tasksNotes: true, tasksPeople: true, sessionsClients: false, commissionClients: false, commissionAmounts: true },
+  DEFAULT_VIS: { home: true, tasks: true, sessions: false, commission: false, tasksNotes: true, tasksPeople: true, sessionsClients: false, sessionsAmounts: false, commissionClients: false, commissionAmounts: true },
   vis() { return { ...this.DEFAULT_VIS, ...(store.settings?.get()?.visibility || {}) }; },
   /* can the current viewer see a page? */
   canSee(pageId) {
