@@ -274,7 +274,7 @@ function paintSub() {
   const stuck = !!sh.pendingSig;
   n.innerHTML = `${icons.sheet}<span>Google Sheet ${stuck
     ? `<b style="color:var(--bad)">not sent yet</b>${sh.lastError ? ` · ${esc(sh.lastError)}` : ""}`
-    : (sh.lastPushAt ? `up to date · sent ${esc(relTime(sh.lastPushAt))}` : "connected")}</span>`
+    : (sh.lastPushAt ? `up to date · sent ${esc(relTime(sh.lastPushAt))}${sh.unverified ? ` · <span class="muted">update the script in Options to double check writes</span>` : ""}` : "connected")}</span>`
     + (stuck ? ` <button type="button" class="btn sm" data-retry style="margin-left:4px">${icons.refresh}Retry</button>` : "");
   $("[data-retry]", n)?.addEventListener("click", async e => {
     const b = e.currentTarget; b.disabled = true; b.textContent = "Sending...";
@@ -535,7 +535,7 @@ function openOptions() {
    Every change is pushed to an Apps Script web app the user deploys on their own sheet,
    so a manager can just open the sheet link. The whole table is sent each time, which
    keeps the sheet correct after edits and deletions without any diffing. */
-export const sheet = () => ({ url: "", viewUrl: "", lastSig: "", lastCount: 0, lastPushAt: "", pendingSig: "", lastError: "", ...(intDoc?.get()?.sheet || {}) });
+export const sheet = () => ({ url: "", viewUrl: "", lastSig: "", lastCount: 0, lastPushAt: "", pendingSig: "", lastError: "", unverified: false, ...(intDoc?.get()?.sheet || {}) });
 const SHEET_HEAD = ["Date", "From", "To", "Client", "Location", "Hours", "Editing", "Billing", "Session", "Editing fee", "Total", "Notes"];
 const MONTH_HEAD = ["Month", "Sessions", "Hours", "With editing", "Complimentary", "Session fees", "Editing fees", "Total"];
 
@@ -624,14 +624,17 @@ async function send(cfg, body, s, count) {
   // remember, before the request goes out, that this version is outstanding
   intDoc.set({ sheet: { ...cfg, pendingSig: s, lastError: "" } });
 
-  let confirmed = false, reason = "";
+  let confirmed = false, verified = false, reason = "";
   try {
     // text/plain keeps it a simple request, so the browser sends it without a preflight
     const res = await fetch(cfg.url, { method: "POST", body, headers: { "Content-Type": "text/plain;charset=utf-8" }, redirect: "follow" });
     const txt = res.ok ? await res.text() : "";
     let j = null;
     try { j = JSON.parse(txt); } catch (e) { j = null; }
-    if (j && j.ok && j.sig === s) confirmed = true;
+    if (j && j.ok && j.sig === s) { confirmed = true; verified = true; }
+    // an older script answers {"ok":true} with no signature. It only answers at all once the
+    // sheet has been written, so that is a real success, just one we cannot double check.
+    else if (j && j.ok) confirmed = true;
     else if (!res.ok) reason = "The sheet script returned an error (HTTP " + res.status + ")";
     else reason = "The sheet script did not confirm the update";
   } catch (e) {
@@ -641,15 +644,15 @@ async function send(cfg, body, s, count) {
   // the reply may be unreadable even when the write worked, so ask the sheet directly
   if (!confirmed) {
     const st = await sheetState(cfg.url);
-    if (st && st.sig === s) confirmed = true;
+    if (st && st.sig === s) { confirmed = true; verified = true; }
     else if (st) reason = "The sheet is still on an older version";
     else if (!reason) reason = "The sheet did not answer";
   }
 
   if (!confirmed) return fail(reason + ". Open Options to check the script, or press Retry.");
   retryStep = 0;
-  intDoc.set({ sheet: { ...cfg, lastSig: s, lastCount: count, lastPushAt: nowISO(), pendingSig: "", lastError: "" } });
-  return { ok: true, rows: count };
+  intDoc.set({ sheet: { ...cfg, lastSig: s, lastCount: count, lastPushAt: nowISO(), pendingSig: "", lastError: "", unverified: !verified } });
+  return { ok: true, rows: count, verified };
 }
 
 /* Anything outstanding is retried: quickly at first, then slowly, forever while the app is open. */
@@ -676,7 +679,7 @@ async function reconcileSheet() {
   if (!cfg.url || !ctx?.auth?.isOwner || col.denied) return;
   await col.ready;
   const st = await sheetState(cfg.url);
-  if (!st) { queueSheetPush(); return; }
+  if (!st) { queueSheetPush(); return; }          // old script, fall back to the normal path
   const mine = sig(JSON.stringify(sheetPayload()));
   if (st.sig !== mine) pushSheet({ force: true }).then(paintSub);
 }
