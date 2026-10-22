@@ -439,29 +439,32 @@ export async function checkSheet(onStep) {
   if (!cfg.url) { say("Sheet connected", false, "No web app link saved yet. Add it above."); return steps; }
   say("Sheet connected", true, cfg.url.replace(/^https:\/\//, "").slice(0, 46) + "...");
 
+  // 1. the only question that really matters: does your data get into the sheet
+  const r = await pushSheet({ force: true });
+  const wrote = r.ok;
+  say("Your sessions reach the sheet", wrote, wrote
+    ? `${all().length} session${all().length === 1 ? "" : "s"} written just now`
+    : r.error);
+
+  // 2. the extra layer: can the sheet prove back to us what it is holding
   const t0 = Date.now();
-  const st = await sheetState(cfg.url);
-  if (!st) {
-    say("Script answers", false, "No readable reply. Either the deployment is not set to \u201cAnyone\u201d, or it is still the older script. Paste the script again and redeploy with Version: New version.");
+  const probe = await sheetProbe(cfg.url);
+  if (!probe.ok) {
+    say("Sheet can confirm what it holds", false, PROBE_HELP[probe.why] || "Could not read the reply.");
+    say(wrote ? "Nothing is being lost" : "Action needed", wrote, wrote
+      ? "Your sessions are going in. Only the double check is missing, so fix the deployment when you have a minute."
+      : "Sessions are not reaching the sheet. Fix the deployment above, then run this again.");
     return steps;
   }
-  say("Script answers", true, `replied in ${Date.now() - t0} ms`);
-  say("Script can prove what it wrote", true, st.rows ? `it reports ${st.rows} rows` : "ready, nothing written yet");
+  const st = probe.state;
+  say("Sheet can confirm what it holds", true, `answered in ${Date.now() - t0} ms, reporting ${st.rows} rows`);
 
   const mine = sig(JSON.stringify(sheetPayload()));
-  if (st.sig === mine) say("Sheet matches this device", true, "already identical, nothing to send");
-  else say("Sheet matches this device", false, "out of date, sending now");
-
-  const r = await pushSheet({ force: true });
-  if (!r.ok) { say("Live test write", false, r.error); return steps; }
-  say("Live test write", true, r.verified ? "sent and confirmed by the sheet" : "sent, but the sheet could not confirm it");
-
-  const after = await sheetState(cfg.url);
-  const ok = after && after.sig === mine;
-  say("Confirmed end to end", !!ok, ok
+  const ok = st.sig === mine;
+  say("Confirmed end to end", ok, ok
     ? `the sheet is holding exactly your ${all().length} session${all().length === 1 ? "" : "s"}`
-    : "the sheet did not come back with the expected version");
-  if (after?.at) say("Sheet last written", true, new Date(after.at).toLocaleString());
+    : "the sheet came back with a different version, press Check again");
+  if (st.at) say("Sheet last written", true, new Date(st.at).toLocaleString());
   return steps;
 }
 
@@ -664,15 +667,35 @@ export async function pushSheet({ force = false } = {}) {
   finally { pushing = false; }
 }
 
-/* Ask the sheet which version it is holding. This is the proof, not the POST going out. */
-async function sheetState(url) {
+/* Ask the sheet which version it is holding. This is the proof, not the POST going out.
+   Google answers a stale deployment, a private deployment and a broken script all with
+   plain HTML, so the body is inspected to say which one it actually is. */
+async function sheetProbe(url) {
+  let res, txt = "";
   try {
     const u = url + (url.includes("?") ? "&" : "?") + "probe=1&t=" + Date.now();
-    const res = await fetch(u, { method: "GET", redirect: "follow" });
-    if (!res.ok) return null;
-    const j = JSON.parse(await res.text());
-    return (j && j.ok && typeof j.sig === "string") ? j : null;
-  } catch (e) { return null; }
+    res = await fetch(u, { method: "GET", redirect: "follow" });
+    txt = await res.text();
+  } catch (e) { return { ok: false, why: "blocked" }; }
+  try {
+    const j = JSON.parse(txt);
+    if (j && j.ok && typeof j.sig === "string") return { ok: true, state: j };
+  } catch (e) { /* not JSON, work out why below */ }
+  if (/Script function not found|TypeError: doGet|is not a function/i.test(txt)) return { ok: false, why: "old-version" };
+  if (/accounts\.google\.com|Sign in|signin\/v2|Choose an account|requires you to sign in/i.test(txt)) return { ok: false, why: "not-public" };
+  if (/Exception|Error|error/i.test(txt)) return { ok: false, why: "script-error" };
+  return { ok: false, why: "unreadable", status: res?.status };
+}
+const PROBE_HELP = {
+  "old-version": "Your sheet is still running the previous script. Saving the code does not publish it: in Apps Script use Deploy, Manage deployments, the pencil icon, set Version to New version, then Deploy. If you used New deployment instead, you were given a different link and the one saved here still points at the old code.",
+  "not-public": "The deployment is not open. Edit the deployment and set Who has access to Anyone, then Deploy.",
+  "script-error": "The script is reporting an error. Open Apps Script, Executions, and read the newest failure.",
+  "blocked": "The reply could not be read at all, which is usually no connection, or a link that is not the /exec address.",
+  "unreadable": "Google answered with something unexpected. Check the link ends in /exec.",
+};
+async function sheetState(url) {
+  const r = await sheetProbe(url);
+  return r.ok ? r.state : null;
 }
 
 async function send(cfg, body, s, count) {
