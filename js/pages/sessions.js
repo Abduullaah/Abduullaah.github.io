@@ -91,13 +91,16 @@ export function attach(c) {
   /* Self-healing: a push can fail because you were offline, the script was mid-redeploy,
      or the workspace wasn't unlocked yet. Nothing is lost, the signature check means these
      retries are free when the sheet is already correct, and they catch up when it isn't. */
-  const retry = () => queueSheetPush();
+  /* Coming back to the app checks the sheet itself, not just our own record of it, so a
+     sheet cleared or edited while the app sat open is noticed too. Throttled, it is one
+     tiny request a minute at most. */
+  const retry = () => { queueSheetPush(); reconcileSheet(); };
   window.addEventListener("online", retry);
   window.addEventListener("focus", retry);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) retry(); });
-  ctx.auth.onChange?.(() => { retry(); setTimeout(reconcileSheet, 4000); });
+  ctx.auth.onChange?.(() => { retry(); setTimeout(() => reconcileSheet({ force: true }), 4000); });
   setInterval(retry, 120000);
-  setTimeout(reconcileSheet, 4000);
+  setTimeout(() => reconcileSheet({ force: true }), 4000);
 }
 export function render(r, c) {
   attach(c); root = r;
@@ -426,6 +429,62 @@ function askForSheetLink() {
   body.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); save(); } });
 }
 
+/* Runs the whole chain against the real sheet and reports what actually happened,
+   so "it is working" is something you can see rather than something you are told. */
+export async function checkSheet(onStep) {
+  const steps = [];
+  const say = (label, ok, detail) => { steps.push({ label, ok, detail }); onStep?.(steps); return ok; };
+  const cfg = sheet();
+
+  if (!cfg.url) { say("Sheet connected", false, "No web app link saved yet. Add it above."); return steps; }
+  say("Sheet connected", true, cfg.url.replace(/^https:\/\//, "").slice(0, 46) + "...");
+
+  const t0 = Date.now();
+  const st = await sheetState(cfg.url);
+  if (!st) {
+    say("Script answers", false, "No readable reply. Either the deployment is not set to \u201cAnyone\u201d, or it is still the older script. Paste the script again and redeploy with Version: New version.");
+    return steps;
+  }
+  say("Script answers", true, `replied in ${Date.now() - t0} ms`);
+  say("Script can prove what it wrote", true, st.rows ? `it reports ${st.rows} rows` : "ready, nothing written yet");
+
+  const mine = sig(JSON.stringify(sheetPayload()));
+  if (st.sig === mine) say("Sheet matches this device", true, "already identical, nothing to send");
+  else say("Sheet matches this device", false, "out of date, sending now");
+
+  const r = await pushSheet({ force: true });
+  if (!r.ok) { say("Live test write", false, r.error); return steps; }
+  say("Live test write", true, r.verified ? "sent and confirmed by the sheet" : "sent, but the sheet could not confirm it");
+
+  const after = await sheetState(cfg.url);
+  const ok = after && after.sig === mine;
+  say("Confirmed end to end", !!ok, ok
+    ? `the sheet is holding exactly your ${all().length} session${all().length === 1 ? "" : "s"}`
+    : "the sheet did not come back with the expected version");
+  if (after?.at) say("Sheet last written", true, new Date(after.at).toLocaleString());
+  return steps;
+}
+
+function openSheetCheck() {
+  const body = el(`<div class="stack gap-12"><div data-steps></div><p class="hint" data-done></p></div>`);
+  const m = modal({ title: "Checking the Google Sheet", body, footer: el(`<div class="row" style="width:100%"><button type="button" class="btn" data-close2>Close</button></div>`) });
+  $("[data-close2]", m.root).addEventListener("click", () => m.close());
+  const paintSteps = steps => {
+    $("[data-steps]", body).innerHTML = steps.map(x => `<div class="row" style="align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid var(--line)">
+      <span style="color:${x.ok ? "var(--good)" : "var(--bad)"};font-weight:700;width:14px">${x.ok ? "\u2713" : "\u2715"}</span>
+      <span style="min-width:0"><b style="font-size:13.5px">${esc(x.label)}</b><div class="muted" style="font-size:12.5px">${esc(x.detail || "")}</div></span></div>`).join("");
+  };
+  paintSteps([]);
+  $("[data-done]", body).textContent = "Running...";
+  lastReconcile = 0;
+  checkSheet(paintSteps).then(steps => {
+    const bad = steps.filter(x => !x.ok);
+    $("[data-done]", body).textContent = bad.length ? "Something needs attention, see above." : "All good. Every session on this device is in the sheet right now.";
+    $("[data-done]", body).style.color = bad.length ? "var(--bad)" : "var(--good)";
+    paintSub();
+  });
+}
+
 /* ---------- options: locations, hours, defaults ---------- */
 function openOptions() {
   const c = JSON.parse(JSON.stringify(cfg()));
@@ -455,7 +514,7 @@ function openOptions() {
       <div class="row wrap mb-8"><span class="badge-mode ${sh0.url ? "cloud" : "local"}">${sh0.url ? (sh0.lastPushAt ? `Connected · sent ${esc(relTime(sh0.lastPushAt))}` : "Connected") : "Not connected"}</span>${sh0.lastError ? `<span class="muted" style="font-size:12.5px;color:var(--bad)">${esc(sh0.lastError)}</span>` : ""}</div>
       <div class="field mb-8"><label for="oSheetUrl">Web app link (ends in /exec)</label><input class="inp mono" id="oSheetUrl" value="${esc(sh0.url || "")}" placeholder="https://script.google.com/macros/s/…/exec" style="font-size:12px"></div>
       <div class="field"><label for="oSheetView">Sheet link, the one you give your manager (optional)</label><input class="inp mono" id="oSheetView" value="${esc(sh0.viewUrl || "")}" placeholder="https://docs.google.com/spreadsheets/d/…" style="font-size:12px"></div>
-      <div class="row wrap mt-8"><button type="button" class="btn sm" data-sheet-send>${icons.refresh}Save and send everything now</button></div>
+      <div class="row wrap mt-8"><button type="button" class="btn sm" data-sheet-send>${icons.refresh}Save and send everything now</button><button type="button" class="btn sm" data-sheet-check>${icons.check}Check the connection</button></div>
       <details class="mt-8"><summary style="cursor:pointer;font-weight:500;font-size:13.5px">How to set it up, five minutes, once</summary>
         <ol class="steps mt-8">
           <li><p>In Google Drive create a <b>new spreadsheet</b> and name it, e.g. <b>flowork podcast sessions</b>.</p></li>
@@ -497,6 +556,7 @@ function openOptions() {
     if (ev.target.closest("[data-add-loc]")) { c.locations.push("New location"); paintLocs(); const ins = $$('[data-list="locations"] .nm', body); ins[ins.length - 1]?.select(); }
   });
   paintLocs();
+  $("[data-sheet-check]", body)?.addEventListener("click", () => { saveSheet(); openSheetCheck(); });
   $("[data-copy-script]", body)?.addEventListener("click", () => navigator.clipboard.writeText(APPS_SCRIPT).then(() => toast("Script copied, paste it into Apps Script")).catch(() => toast("Copy failed", { error: true })));
   const saveSheet = () => {
     const url = $("#oSheetUrl", body).value.trim(), viewUrl = $("#oSheetView", body).value.trim();
@@ -674,14 +734,17 @@ function queueSheetPush() {
 
 /* On opening the app, compare what the sheet holds with what we have. This repairs a sheet
    that was cleared, edited by hand, or left stale by an earlier failure. */
-async function reconcileSheet() {
+let lastReconcile = 0;
+async function reconcileSheet({ force = false } = {}) {
   const cfg = sheet();
   if (!cfg.url || !ctx?.auth?.isOwner || col.denied) return;
+  if (!force && Date.now() - lastReconcile < 60000) return;
+  lastReconcile = Date.now();
   await col.ready;
   const st = await sheetState(cfg.url);
   if (!st) { queueSheetPush(); return; }          // old script, fall back to the normal path
   const mine = sig(JSON.stringify(sheetPayload()));
-  if (st.sig !== mine) pushSheet({ force: true }).then(paintSub);
+  if (st.sig !== mine || cfg.unverified) pushSheet({ force: true }).then(paintSub);
 }
 
 export const APPS_SCRIPT = `/** flowork Backstage -> this sheet. Paste, save, deploy. Nothing to edit, ever. */
