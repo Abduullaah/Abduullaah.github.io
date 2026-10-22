@@ -1,4 +1,4 @@
-/* app.js — shell, router, lock screen. Pages register themselves in PAGES. */
+/* app.js, shell, router, lock screen. Pages register themselves in PAGES. */
 import { $, $$, el, esc, icons, toast, modal, confirmDialog, closeMenus } from "./ui.js";
 import { store } from "./store.js";
 import { auth } from "./auth.js";
@@ -93,7 +93,7 @@ async function onLockClick() {
 function renderNav() {
   const pages = visiblePages().filter(p => p.id !== "settings");
   const cur = routeId();
-  const link = p => `<a href="#/${p.id}" ${cur === p.id ? 'aria-current="page"' : ""}>${icons[p.icon] || ""}<span>${esc(p.title)}</span>${(auth.isOwner && !auth.vis()[p.id]) ? `<span class="lock-mini" title="Private — only you can see this">${icons.lock}</span>` : ""}</a>`;
+  const link = p => `<a href="#/${p.id}" ${cur === p.id ? 'aria-current="page"' : ""}>${icons[p.icon] || ""}<span>${esc(p.title)}</span>${(auth.isOwner && !auth.vis()[p.id]) ? `<span class="lock-mini" title="Private, only you can see this">${icons.lock}</span>` : ""}</a>`;
   $("[data-nav]", app).innerHTML = pages.map(link).join("") + (auth.isOwner ? `<div class="nav-label eyebrow">Owner</div><a href="#/settings" ${cur === "settings" ? 'aria-current="page"' : ""}>${icons.settings}<span>Settings</span></a>` : "");
   $("[data-tabbar]", app).innerHTML = pages.map(link).join("") + (auth.isOwner ? `<a href="#/settings" ${cur === "settings" ? 'aria-current="page"' : ""}>${icons.settings}<span>Settings</span></a>` : "");
   $("[data-ws-name]", app).textContent = profile().workspaceName;
@@ -108,7 +108,7 @@ function renderNav() {
 function renderGuestBar() {
   const root = $("[data-guest-bar]", app);
   if (auth.state === "owner" && auth.preview) {
-    root.innerHTML = `<div class="guest-bar">${icons.eye}<span>Previewing as a <b>guest</b> — this is exactly what visitors see.</span><span class="grow"></span><button type="button" class="btn sm" data-exit-preview>Exit preview</button></div>`;
+    root.innerHTML = `<div class="guest-bar">${icons.eye}<span>Previewing as a <b>guest</b> – this is exactly what visitors see.</span><span class="grow"></span><button type="button" class="btn sm" data-exit-preview>Exit preview</button></div>`;
     $("[data-exit-preview]", root).addEventListener("click", () => { auth.setPreview(false); render(); });
   } else if (auth.state === "guest") {
     root.innerHTML = `<div class="guest-bar">${icons.eye}<span>Viewing <b>${esc(profile().name)}'s</b> shared workspace as a guest.</span><span class="grow"></span><button type="button" class="btn sm" data-unlock>${icons.unlock}Unlock</button></div>`;
@@ -156,7 +156,7 @@ export function render() {
   } else {
     page.update?.(current.root, ctx());
   }
-  document.title = `${page.title} — ${profile().workspaceName}`;
+  document.title = `${page.title} – ${profile().workspaceName}`;
 }
 const ctx = () => ({ store, auth, navigate, profile, render });
 document.addEventListener("keydown", e => {
@@ -199,7 +199,7 @@ function renderLock() {
       ${!needsSetup && auth.anyPublicPage() ? `<button type="button" data-guest>Continue as a guest ${icons.arrowUpRight}</button>` : ""}
       ${!needsSetup ? `<button type="button" data-forgot class="muted" style="font-weight:400">Forgot your PIN?</button>` : ""}
     </div>
-    <div class="foot">${modeNote} · PIN required on every visit${store.mode === "cloud" && store.config.source === "device" ? ` · <button type="button" data-cloud-off style="font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;text-decoration:underline;text-underline-offset:2px">use this device without cloud</button>` : ""}${store.status === "error" && store.mode === "cloud" ? `<div style="margin-top:8px;color:var(--bad)">Can't reach the cloud project — check the config or your connection.</div>` : ""}</div>
+    <div class="foot">${modeNote} · PIN required on every visit${store.mode === "cloud" && store.config.source === "device" ? ` · <button type="button" data-cloud-off style="font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;text-decoration:underline;text-underline-offset:2px">use this device without cloud</button>` : ""}${store.status === "error" && store.mode === "cloud" ? `<div style="margin-top:8px;color:var(--bad)">Can't reach the cloud project, check the config or your connection.</div>` : ""}</div>
   </div></div>`;
   applyTheme();
   $("[data-cloud-off]", app)?.addEventListener("click", async () => {
@@ -273,12 +273,12 @@ async function firstRun() {
     try {
       const mod = await import("./seed.js");
       if (mod?.SEED) { await store.importAll(mod.SEED, { merge: true }); store.setPref("seeded", true); }
-    } catch (e) { /* no seed shipped — start empty */ }
+    } catch (e) { /* no seed shipped, start empty */ }
   }
 }
 /* Cloud housekeeping, run whenever the owner is signed in:
    1. make sure the shared settings doc exists (guests read visibility from it)
-   2. lift this device's local data up the first time — and only mark it done once it really landed */
+   2. lift this device's local data up the first time, and only mark it done once it really landed */
 async function cloudHousekeeping() {
   if (store.mode !== "cloud" || !auth.isOwner) return;
   await store.settings.ready;
@@ -288,7 +288,7 @@ async function cloudHousekeeping() {
   if (store.pref("cloudMigrated") || !store.localHasData()) return;
   const t = store.collection("tasks"), c = store.collection("commission");
   const settled = await Promise.race([Promise.all([t.ready, c.ready]).then(() => true), new Promise(r => setTimeout(() => r(false), 10000))]);
-  if (!settled || t.denied || c.denied) return;            // not ready yet — try again next time
+  if (!settled || t.denied || c.denied) return;            // not ready yet, try again next time
   if (t.all().length || c.all().length) { store.setPref("cloudMigrated", true); return; }
   const ok = await store.importAll(await store.localSnapshot(), { merge: true });
   if (ok) { store.setPref("cloudMigrated", true); toast("This device's data is now in the cloud"); }
@@ -302,7 +302,7 @@ export async function pushLocalToCloud() {
   if (!n) return { ok: false, error: "This device has no local data left to upload." };
   const ok = await store.importAll(snap, { merge: true });
   if (ok) store.setPref("cloudMigrated", true);
-  return ok ? { ok: true, n } : { ok: false, error: "Upload failed — check the rules in Firebase." };
+  return ok ? { ok: true, n } : { ok: false, error: "Upload failed, check the rules in Firebase." };
 }
 
 /* ---------- boot ---------- */
@@ -313,11 +313,11 @@ export async function pushLocalToCloud() {
   await auth.init();
   PAGES.forEach(p => p.attach?.(ctx()));
   store.onStatus(() => { if (shellBuilt) renderSync(); });
-  /* Coming back to the app — or back online — retries anything the server refused earlier,
+  /* Coming back to the app, or back online, retries anything the server refused earlier,
      so a page can never sit there empty once access is available again. */
   ["online", "focus"].forEach(ev => window.addEventListener(ev, () => store.refresh?.()));
   document.addEventListener("visibilitychange", () => { if (!document.hidden) store.refresh?.(); });
-  store.settings.subscribe(() => { if (shellBuilt) { renderNav(); renderGuestBar(); document.title = `${current?.page?.title || ""} — ${profile().workspaceName}`; } });
+  store.settings.subscribe(() => { if (shellBuilt) { renderNav(); renderGuestBar(); document.title = `${current?.page?.title || ""} – ${profile().workspaceName}`; } });
   auth.onChange(() => cloudHousekeeping());
   cloudHousekeeping();
   render();

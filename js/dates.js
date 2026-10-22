@@ -1,4 +1,4 @@
-/* dates.js — local-date helpers (ISO yyyy-mm-dd strings in, no timezone drift) */
+/* dates.js, local-date helpers (ISO yyyy-mm-dd strings in, no timezone drift) */
 
 export const MON  = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 export const MONF = ["January","February","March","April","May","June","July","August","September","October","November","December"];

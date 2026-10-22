@@ -1,4 +1,4 @@
-/* pages/settings.js — owner only: who you are, what guests see, PIN, cloud sync, data. */
+/* pages/settings.js, owner only: who you are, what guests see, PIN, cloud sync, data. */
 import { $, $$, el, esc, icons, toast, modal, confirmDialog, download } from "../ui.js";
 import { readConfig, saveDeviceConfig } from "../store.js";
 import { toBackup } from "../migrate.js";
@@ -36,7 +36,7 @@ export function render(r, c) {
           </div><div class="card-f row"><button type="button" class="btn primary" data-save-profile>Save profile</button></div></div>
         </section>
 
-        <section class="settings-sec" id="s-guests"><h2>Front of house</h2><p class="lead">Anyone with the link who does not have your PIN is a guest. Choose exactly what they can see. Everything else stays backstage.${cloud ? " In cloud mode this is enforced by the server — hidden pages cannot be fetched at all." : ""}</p>
+        <section class="settings-sec" id="s-guests"><h2>Front of house</h2><p class="lead">Anyone with the link who does not have your PIN is a guest. Choose exactly what they can see. Everything else stays backstage.${cloud ? " In cloud mode this is enforced by the server, hidden pages cannot be fetched at all." : ""}</p>
           <div class="card"><div class="card-b" data-vis></div>
           <div class="card-f row wrap"><button type="button" class="btn" data-preview>${icons.eye}Preview as a guest</button><button type="button" class="btn ghost" data-copy-link>${icons.share}Copy link</button><span class="grow"></span><span class="muted" style="font-size:12.5px" data-vis-summary></span></div></div>
         </section>
@@ -57,14 +57,14 @@ export function render(r, c) {
           </div></div>
         </section>
 
-        <section class="settings-sec" id="s-cloud"><h2>Cloud sync</h2><p class="lead">Live on every device, offline-safe, and free: your data lives in your own Google Firebase project (Spark plan — no card, no expiry). Until you connect it, everything stays on this device.</p>
+        <section class="settings-sec" id="s-cloud"><h2>Cloud sync</h2><p class="lead">Live on every device, offline-safe, and free: your data lives in your own Google Firebase project (Spark plan, no card, no expiry). Until you connect it, everything stays on this device.</p>
           <div data-cloud></div>
         </section>
 
         <section class="settings-sec" id="s-data"><h2>Data</h2><p class="lead">Your data is yours. Back it up any time, restore it anywhere, or bring in the two original trackers.</p>
           <div class="card"><div class="card-b stack gap-16">
             <div class="row wrap"><button type="button" class="btn primary" data-backup>${icons.download}Download backup</button><span class="muted" style="font-size:12.5px">One JSON file with work, sessions, ledger, rates and these settings.</span></div>
-            <div class="dropzone" data-drop>${icons.upload}<div class="mt-8"><b>Restore or import</b> — drop a file here or click to choose.<br><span style="font-size:12px">Accepts a workspace backup, the old <em>Task Ledger</em> backup, or the old <em>Commission Tracker</em> backup.</span></div><input type="file" accept="application/json,.json" data-file hidden></div>
+            <div class="dropzone" data-drop>${icons.upload}<div class="mt-8"><b>Restore or import</b> – drop a file here or click to choose.<br><span style="font-size:12px">Accepts a workspace backup, the old <em>Task Ledger</em> backup, or the old <em>Commission Tracker</em> backup.</span></div><input type="file" accept="application/json,.json" data-file hidden></div>
             <div class="row wrap"><label class="check"><input type="radio" name="impmode" value="merge" checked><span>Merge into what's here</span></label><label class="check"><input type="radio" name="impmode" value="replace"><span>Replace everything</span></label></div>
             ${cloud ? `<div class="divider" style="margin:2px 0"></div><div class="row wrap"><button type="button" class="btn" data-push>${icons.cloud}Upload this device's data to the cloud</button><span class="muted" style="font-size:12.5px">Only needed if this device once held entries the cloud never received.</span></div>` : ""}
           </div><div class="card-f row wrap"><button type="button" class="btn danger" data-erase>${icons.trash}Erase all work, session and ledger data</button></div></div>
@@ -156,10 +156,10 @@ function paintDynamic() {
     rowV("home", "Home", "The preview page: what is on, this week, and figures for whatever else is shared.") +
     rowV("tasks", "Tasks", "Tasks and productions week by week, plus the People subtab.", sw("tasksPeople", "Show who gave each task", "Names of colleagues in Given by") + sw("tasksNotes", "Show notes", "Blockers and comments")) +
     rowV("sessions", "Sessions", "Podcast shoots: date, client, location, hours, editing and what each one was billed at.", sw("sessionsClients", "Show client names", "Off: clients appear as “Client”") + sw("sessionsAmounts", "Show amounts", "Off: guests see sessions and hours, never the money")) +
-    rowV("commission", "Commission", "Sales and commission. Off by default — this is your money.", sw("commissionAmounts", "Show amounts", "Off: guests only see counts and statuses") + sw("commissionClients", "Show client names", "Off: clients appear as “Client”"));
+    rowV("commission", "Commission", "Sales and commission. Off by default, this is your money.", sw("commissionAmounts", "Show amounts", "Off: guests only see counts and statuses") + sw("commissionClients", "Show client names", "Off: clients appear as “Client”"));
   $$("[data-vis]", root).forEach(i => i.addEventListener("change", () => { ctx.store.settings.set({ visibility: { ...ctx.auth.vis(), [i.dataset.vis]: i.checked } }); }));
   const on = ["home", "tasks", "sessions", "commission"].filter(k => vis[k]);
-  $("[data-vis-summary]", root).textContent = on.length ? `Guests see: ${on.map(k => ({ home: "Home", tasks: "Tasks", sessions: "Sessions", commission: "Commission" })[k]).join(", ")}` : "Guests see nothing — the link only shows the PIN screen.";
+  $("[data-vis-summary]", root).textContent = on.length ? `Guests see: ${on.map(k => ({ home: "Home", tasks: "Tasks", sessions: "Sessions", commission: "Commission" })[k]).join(", ")}` : "Guests see nothing, the link only shows the PIN screen.";
   paintCloud();
 }
 
@@ -204,10 +204,10 @@ service cloud.firestore {
       <li><p><b>Project settings (gear) → Your apps → Web (&lt;/&gt;)</b> → register (no hosting) → copy the <b>firebaseConfig</b> object and paste it below with your email.</p></li>
       <li><p>Back in <b>Firestore → Rules</b>, replace everything with the rules that appear after you connect, and <b>Publish</b>.</p></li>
     </ol>
-    <div class="field"><label for="fbCfg">firebaseConfig</label><textarea class="inp mono" id="fbCfg" style="min-height:120px;font-size:12px" placeholder='{ "apiKey": "...", "authDomain": "...", "projectId": "...", "storageBucket": "...", "messagingSenderId": "...", "appId": "..." }'></textarea><span class="hint">Paste the whole object — <code>const firebaseConfig = {…}</code> is fine too.</span></div>
+    <div class="field"><label for="fbCfg">firebaseConfig</label><textarea class="inp mono" id="fbCfg" style="min-height:120px;font-size:12px" placeholder='{ "apiKey": "...", "authDomain": "...", "projectId": "...", "storageBucket": "...", "messagingSenderId": "...", "appId": "..." }'></textarea><span class="hint">Paste the whole object – <code>const firebaseConfig = {…}</code> is fine too.</span></div>
     <div class="field"><label for="fbEmail">Owner email (the Firebase user you created)</label><input class="inp" id="fbEmail" type="email" placeholder="you@flowork.ae" value="${esc(cfg.ownerEmail || "")}"></div>
     <div class="row wrap"><button type="button" class="btn primary" data-connect>${icons.cloud}Connect cloud</button><span class="muted" style="font-size:12.5px">The data on this device is copied up the first time you unlock.</span></div>
-    <details><summary style="cursor:pointer;font-weight:500;font-size:13.5px">Firestore security rules — paste after connecting</summary><pre class="code mt-8">${esc(rules)}</pre></details>
+    <details><summary style="cursor:pointer;font-weight:500;font-size:13.5px">Firestore security rules, paste after connecting</summary><pre class="code mt-8">${esc(rules)}</pre></details>
     </div></div>`;
   $("[data-connect]", wrap).addEventListener("click", () => {
     let txt = $("#fbCfg", wrap).value.trim(), em = $("#fbEmail", wrap).value.trim();

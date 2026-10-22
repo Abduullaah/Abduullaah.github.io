@@ -1,4 +1,4 @@
-/* config.js — deployment configuration.
+/* config.js, deployment configuration.
    The Firebase web config is safe to publish: it only names the project. Access is controlled by
    your PIN (the password of ownerEmail in Firebase Authentication) and by firestore.rules.
 */

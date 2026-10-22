@@ -1,4 +1,4 @@
-/* pages/tasks.js — Work: everything in flight, week by week. Tasks and productions. */
+/* pages/tasks.js, Work: everything in flight, week by week. Tasks and productions. */
 import { $, $$, el, esc, icons, uid, nowISO, toast, modal, confirmDialog, menu, download, printHTML, debounce } from "../ui.js";
 import { iso, parse, today, todayISO, addDays, monday, weekNo, weekLabel, weekShort, dayShort, dayLabel, dmy, rangeFor, relTime, DAY } from "../dates.js";
 
@@ -242,7 +242,7 @@ function rowHTML(t) {
     : `<span class="prio ${prClass(t.priority)}"><i></i>${esc(t.priority)}</span>`;
   return `<tr data-id="${t.id}" class="${t.status === "Completed" ? "done" : ""}">
     <td style="width:36%">${taskCell(t)}</td>
-    ${showPeople ? `<td class="nowrap ink2">${esc(t.givenBy || "—")}</td>` : ""}
+    ${showPeople ? `<td class="nowrap ink2">${esc(t.givenBy || "–")}</td>` : ""}
     <td class="nw">${statusControl(t, owner)}</td>
     <td class="nw">${prio}</td>
     ${showNotes ? `<td class="hide-mobile"><div class="task-notes">${esc(t.notes || "")}</div></td>` : ""}
@@ -298,8 +298,8 @@ function renderBoard(list) {
     if (!prods.length) return `<div class="empty"><h3>No productions in view</h3><p>Video and content work shows up here once it's filed as a production. Tasks stay on the status board.</p></div>`;
     return `<div class="board" style="grid-template-columns:repeat(5,minmax(0,1fr))">${STAGES.map(name => {
       const rows = sortTasks(prods.filter(t => (t.stage || "Brief") === name));
-      return `<div class="col" data-col="${name}"><div class="col-h"><span class="dot-st ${stClass(STAGE_STATUS[name])}"></span>${name}<span class="n">${rows.length}</span></div><div class="col-b">${rows.map(cardHTML).join("") || `<p class="hintx">—</p>`}</div></div>`;
-    }).join("")}</div>${others ? `<p class="muted mt-16" style="font-size:12.5px">${others} task${others === 1 ? "" : "s"} without production stages hidden — switch to Status to see everything.</p>` : ""}`;
+      return `<div class="col" data-col="${name}"><div class="col-h"><span class="dot-st ${stClass(STAGE_STATUS[name])}"></span>${name}<span class="n">${rows.length}</span></div><div class="col-b">${rows.map(cardHTML).join("") || `<p class="hintx">–</p>`}</div></div>`;
+    }).join("")}</div>${others ? `<p class="muted mt-16" style="font-size:12.5px">${others} task${others === 1 ? "" : "s"} without production stages hidden, switch to Status to see everything.</p>` : ""}`;
   }
   return `<div class="board">${STATUSES.map(name => {
     const rows = sortTasks(list.filter(t => t.status === name));
@@ -312,12 +312,12 @@ function renderBoard(list) {
 function emptyHTML() {
   const any = all().length > 0;
   return `<div class="empty"><h3>${any ? "Nothing matches" : "Nothing logged yet"}</h3>
-    <p>${any ? "Widen the period or clear the filters." : "Add the first task — it saves itself."}</p>
+    <p>${any ? "Widen the period or clear the filters." : "Add the first task, it saves itself."}</p>
     ${any ? `<button type="button" class="btn" data-clear-all>Clear filters</button>` : (ctx.auth.isOwner ? `<button type="button" class="btn primary" data-new-empty>${icons.plus}New task</button>` : "")}</div>`;
 }
 
 
-/* ---------- People subtab — who gives you work, and where it stands. Tasks only. ---------- */
+/* ---------- People subtab, who gives you work, and where it stands. Tasks only. ---------- */
 function renderPeople() {
   if (ctx.auth.mask("tasksPeople")) return `<div class="empty"><h3>People are hidden</h3><p>Names are switched off for guests on this workspace.</p></div>`;
   const showNotes = !ctx.auth.mask("tasksNotes");
@@ -458,7 +458,7 @@ export function openEditor(idOrNull, presets = null) {
           <input class="inp" type="date" id="tDate" value="${esc(t.date || iso(monday(new Date())))}">
           <button type="button" class="btn" data-step="1" aria-label="Forward" style="padding:0 10px">${icons.right}</button>
         </div>
-        <div class="mono muted" data-date-prev style="margin-top:8px;font-size:12px;text-align:center">—</div>
+        <div class="mono muted" data-date-prev style="margin-top:8px;font-size:12px;text-align:center">–</div>
       </div>
     </div>
     <div class="grid-2">
@@ -490,7 +490,7 @@ export function openEditor(idOrNull, presets = null) {
     $("[data-stepper]", body).style.display = mo === "none" ? "none" : "flex"; snap(); paintPrev();
   };
   const paintPrev = () => {
-    if (dateMode === "none") { prev.textContent = "Ongoing — no fixed date"; return; }
+    if (dateMode === "none") { prev.textContent = "Ongoing, no fixed date"; return; }
     if (!dateIn.value) { prev.textContent = "Pick a date"; return; }
     prev.textContent = dateMode === "week" ? `Week ${weekNo(monday(parse(dateIn.value)))} · ${weekLabel(iso(monday(parse(dateIn.value))))}` : dayLabel(dateIn.value);
   };
@@ -550,9 +550,9 @@ export function buildUpdate({ from, to, person = "", notes = true }) {
   const prog = sortTasks(list.filter(t => t.status === "In Progress"));
   const idle = sortTasks(list.filter(t => t.status === "Not Started"));
   const late = list.filter(isLate);
-  const line = t => `• ${t.title}${isProd(t) && t.stage && t.status !== "Completed" ? ` (${t.stage.toLowerCase()})` : ""}${notes && t.notes ? ` — ${t.notes}` : ""}`;
+  const line = t => `• ${t.title}${isProd(t) && t.stage && t.status !== "Completed" ? ` (${t.stage.toLowerCase()})` : ""}${notes && t.notes ? ` – ${t.notes}` : ""}`;
   const period = from && to ? (from === to ? dayLabel(from) : `${dmy(from)} – ${dmy(to)}`) : "All work";
-  const parts = [`Update · ${period}${person ? ` · for ${person}` : ""} — ${p.name}`, ""];
+  const parts = [`Update · ${period}${person ? ` · for ${person}` : ""} – ${p.name}`, ""];
   if (done.length) parts.push(`✅ Done (${done.length})`, ...done.map(line), "");
   if (prog.length) parts.push(`🔄 In progress (${prog.length})`, ...prog.map(line), "");
   if (idle.length) parts.push(`⏳ Not started (${idle.length})`, ...idle.map(line), "");

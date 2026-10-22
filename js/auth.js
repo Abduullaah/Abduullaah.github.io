@@ -1,4 +1,4 @@
-/* auth.js — the front door.
+/* auth.js, the front door.
    Owner unlocks with a PIN. Guests may view whatever the owner has chosen to share.
    local mode : PIN is hashed on this device.
    cloud mode : PIN is the Firebase password of the owner account, so the rules
@@ -27,8 +27,8 @@ const AUTH_ERRORS = {
   "auth/user-disabled": "The owner account is disabled in Firebase.",
   "auth/weak-password": "PIN must be at least 6 digits.",
   "auth/requires-recent-login": "Lock and unlock again, then change the PIN.",
-  "auth/api-key-not-valid.-please-pass-a-valid-api-key.": "The Firebase config on this device isn't valid — check Settings → Cloud sync.",
-  "auth/invalid-api-key": "The Firebase config on this device isn't valid — check Settings → Cloud sync.",
+  "auth/api-key-not-valid.-please-pass-a-valid-api-key.": "The Firebase config on this device isn't valid, check Settings → Cloud sync.",
+  "auth/invalid-api-key": "The Firebase config on this device isn't valid, check Settings → Cloud sync.",
 };
 const friendly = e => AUTH_ERRORS[e?.code] || (e?.code ? `Firebase: ${e.code.replace("auth/", "").replace(/[-.]+/g, " ").trim()}` : (e?.message || "Couldn't unlock."));
 

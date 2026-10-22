@@ -1,4 +1,4 @@
-/* pages/commission.js — Ledger: every sale, the commission it earns, and what is still owed. */
+/* pages/commission.js, Ledger: every sale, the commission it earns, and what is still owed. */
 import { $, $$, el, esc, icons, uid, nowISO, num, fmtMoney, toast, modal, confirmDialog, menu, printHTML, download, debounce, countUp } from "../ui.js";
 import { todayISO, dmy, dm, monthLabel, ym, rangeFor, parse, today, iso, monday, MON, MONF } from "../dates.js";
 import * as work from "./tasks.js";
@@ -38,7 +38,7 @@ export function summary(list) {
   const invoiced = list.filter(e => e.status === "Invoiced").reduce((a, e) => a + entryComm(e), 0);
   return { revenue, comm, paid, invoiced, due: comm - paid, count: list.length };
 }
-export const describe = e => (e.lines || []).map(l => l.name + ((num(l.qty) || 1) > 1 ? ` ×${l.qty}` : "")).join(" + ") || "—";
+export const describe = e => (e.lines || []).map(l => l.name + ((num(l.qty) || 1) > 1 ? ` ×${l.qty}` : "")).join(" + ") || "–";
 export function oldestUnpaidDays(list) {
   const open = list.filter(e => e.status !== "Paid" && e.date).map(e => parse(e.date)).sort((a, b) => a - b);
   if (!open.length) return 0;
@@ -133,7 +133,7 @@ function paint() {
 
   const fig = (k, v, cls = "") => `<div class="fig ${cls}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
   const m = v => `<em>${esc(cur)}</em>${money(v)}`;
-  const dash = fig("Balance due to me", "—", "lead due") + fig("Earned this month", "—") + fig("Paid out", "—");
+  const dash = fig("Balance due to me", "–", "lead due") + fig("Earned this month", "–") + fig("Paid out", "–");
   $("[data-figs]", root).innerHTML = !ready ? dash : hideAmt
     ? fig("Sales logged", sAll.count, "lead") + fig("Paid", all().filter(e => e.status === "Paid").length)
     : fig(oldest ? `Balance due · oldest ${oldest} day${oldest === 1 ? "" : "s"}` : "Balance due to me", m(sAll.due), "lead due") +
@@ -144,7 +144,7 @@ function paint() {
   const t = $("[data-table]", root);
   if (!ready) {
     t.innerHTML = `<div class="tbl-empty">${Date.now() - mounted > 8000
-      ? "Still loading your sales — check your connection, this page will fill in by itself."
+      ? "Still loading your sales, check your connection, this page will fill in by itself."
       : "Loading your sales…"}</div>`;
     $("[data-note]", root).textContent = "";
     return;
@@ -172,13 +172,13 @@ function paint() {
         <td class="dim num hide-mobile" style="text-align:left;width:36px">${i}</td>
         <td class="date"><span class="hide-mobile">${esc(dmy(e.date))}</span><span class="only-mobile">${esc(dm(e.date))}</span></td>
         <td><div class="desc-lines">
-          <div class="l"><b>${hideCli ? "Client" : esc(e.client || "—")}</b>${linked ? ` <span class="tag cat" title="Linked delivery task: ${esc(linked.title)}" style="margin-left:6px">${esc(work.stClass(linked.status) === "done" ? "Delivered" : "In production")}</span>` : ""}</div>
+          <div class="l"><b>${hideCli ? "Client" : esc(e.client || "–")}</b>${linked ? ` <span class="tag cat" title="Linked delivery task: ${esc(linked.title)}" style="margin-left:6px">${esc(work.stClass(linked.status) === "done" ? "Delivered" : "In production")}</span>` : ""}</div>
           <div class="l sub">${esc(describe(e))}${e.notes ? ` · <span class="muted">${esc(e.notes)}</span>` : ""}</div>
           ${hideAmt ? "" : `<div class="l sub only-mobile mono">${esc(cur)} ${money(tot)} · commission ${money(cm)}${settled ? " · paid" : ""}</div>`}</div></td>
         ${hideAmt ? "" : `<td class="num hide-mobile">${money(tot)}</td>
         <td class="num hide-mobile ${settled ? "settled" : ""}">${money(cm)}${entryRate(e) !== num(c.rate) ? `<span class="muted" style="font-size:10px"> ${fmtMoney(entryRate(e))}%</span>` : ""}</td>`}
         <td>${st}${e.status === "Paid" && e.paidOn ? `<div class="mono muted hide-mobile" style="font-size:10.5px;margin-top:3px">paid ${esc(dmy(e.paidOn))}</div>` : (e.status === "Invoiced" && e.invoicedOn ? `<div class="mono muted hide-mobile" style="font-size:10.5px;margin-top:3px">sent ${esc(dmy(e.invoicedOn))}</div>` : "")}</td>
-        ${hideAmt ? "" : `<td class="num balance hide-mobile ${running ? "" : "dim"}">${running ? money(running) : "—"}</td>`}
+        ${hideAmt ? "" : `<td class="num balance hide-mobile ${running ? "" : "dim"}">${running ? money(running) : "–"}</td>`}
         ${owner ? `<td class="r" style="width:1%"><div class="acts"><button type="button" class="icon-btn sm hide-mobile" data-edit title="Edit">${icons.edit}</button><button type="button" class="icon-btn sm" data-more title="More">${icons.more}</button></div></td>` : ""}
       </tr>`;
     });
@@ -229,7 +229,7 @@ function createTaskFor(en) {
   const checklist = [];
   pkgLines.forEach(l => { const p = c.packages.find(x => x.name === l.name); (p?.deliverables || []).forEach(d => { for (let i = 0; i < (num(l.qty) || 1); i++) checklist.push({ id: uid(), text: (num(l.qty) || 1) > 1 ? `${d} (${i + 1})` : d, done: false }); }); });
   const t = work.newTask({
-    title: `${describe(en)} — ${en.client || "client"}`, givenBy: en.client || "", kind: "production", stage: "Brief",
+    title: `${describe(en)} – ${en.client || "client"}`, givenBy: en.client || "", kind: "production", stage: "Brief",
     priority: "High", tags: ["Client work"], checklist, notes: en.notes || "", saleId: en.id,
     dateMode: "week", date: iso(monday(parse(en.date || todayISO()))),
   });
@@ -340,7 +340,7 @@ function openRates() {
     </div>
     <div class="field"><label>Packages</label><p class="hint" style="margin:-2px 0 6px">Unit prices. Deliverables become the checklist of the delivery task when you log a sale.</p><div data-list="packages"></div><button type="button" class="btn sm mt-8" data-add-item="packages">${icons.plus}Add package</button></div>
     <div class="field"><label>Add-ons</label><div data-list="addons"></div><button type="button" class="btn sm mt-8" data-add-item="addons">${icons.plus}Add add-on</button></div>
-    <p class="hint">Renaming keeps past sales as they were logged. Changing the commission % only affects new sales — each sale remembers its own rate.</p>
+    <p class="hint">Renaming keeps past sales as they were logged. Changing the commission % only affects new sales, each sale remembers its own rate.</p>
   </div>`);
   const foot = el(`<div class="row" style="width:100%"><button type="button" class="btn primary" data-save>Save rates</button><button type="button" class="btn ghost" data-cancel>Cancel</button></div>`);
   const m = modal({ title: "Rates & catalog", body, footer: foot, size: "wide" });
@@ -354,7 +354,7 @@ function openRates() {
         ${used(kind, it.name) ? `<span class="used">${used(kind, it.name)} sale${used(kind, it.name) === 1 ? "" : "s"}</span>` : ""}
         <button type="button" class="icon-btn sm danger" data-rm aria-label="Remove">${icons.x}</button>
       </div>
-      ${key === "packages" ? `<input class="inp" data-i="${i}" data-k="deliverables" value="${esc((it.deliverables || []).join(", "))}" placeholder="Deliverables, comma separated — e.g. Main edit, Reel cut, Subtitles" style="font-size:13px;height:34px">` : ""}
+      ${key === "packages" ? `<input class="inp" data-i="${i}" data-k="deliverables" value="${esc((it.deliverables || []).join(", "))}" placeholder="Deliverables, comma separated, e.g. Main edit, Reel cut, Subtitles" style="font-size:13px;height:34px">` : ""}
     </div>`).join("");
   }
   body.addEventListener("input", ev => {
@@ -413,7 +413,7 @@ function printStatement({ list, from, to, notes }) {
     if (months.size > 1) rows += `<tr class="grp"><td colspan="8">${esc(monthLabel(k))}</td></tr>`;
     months.get(k).forEach(e => {
       i++; const tot = entryTotal(e), cm = entryComm(e), settled = e.status === "Paid"; if (!settled) running += cm;
-      rows += `<tr><td class="n" style="text-align:left;color:#858B84">${i}</td><td class="d">${esc(dmy(e.date))}</td><td>${hideCli ? "Client" : esc(e.client || "—")}${notes && e.notes ? `<div style="color:#858B84;font-size:8pt">${esc(e.notes)}</div>` : ""}</td><td>${esc(describe(e))}</td><td class="n">${money(tot)}</td><td class="n ${settled ? "settled" : ""}">${money(cm)}</td><td><span class="pill ${stCls(e.status)}">${esc(e.status)}</span>${e.paidOn ? `<div class="d" style="color:#858B84;font-size:7pt">${esc(dmy(e.paidOn))}</div>` : ""}</td><td class="n bal">${running ? money(running) : ""}</td></tr>`;
+      rows += `<tr><td class="n" style="text-align:left;color:#858B84">${i}</td><td class="d">${esc(dmy(e.date))}</td><td>${hideCli ? "Client" : esc(e.client || "–")}${notes && e.notes ? `<div style="color:#858B84;font-size:8pt">${esc(e.notes)}</div>` : ""}</td><td>${esc(describe(e))}</td><td class="n">${money(tot)}</td><td class="n ${settled ? "settled" : ""}">${money(cm)}</td><td><span class="pill ${stCls(e.status)}">${esc(e.status)}</span>${e.paidOn ? `<div class="d" style="color:#858B84;font-size:7pt">${esc(dmy(e.paidOn))}</div>` : ""}</td><td class="n bal">${running ? money(running) : ""}</td></tr>`;
     });
   });
   printHTML(`

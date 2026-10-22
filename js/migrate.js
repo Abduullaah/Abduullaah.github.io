@@ -1,4 +1,4 @@
-/* migrate.js — converts the two original trackers (Task Ledger + Commission Tracker) into workspace format. */
+/* migrate.js, converts the two original trackers (Task Ledger + Commission Tracker) into workspace format. */
 import { uid } from "./ui.js";
 
 const PROD_RE = /\b(video|reel|edit|editing|podcast|shoot|film|footage|cut|clip|episode|trailer|teaser|animation)\b/i;

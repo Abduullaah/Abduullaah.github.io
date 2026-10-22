@@ -1,4 +1,4 @@
-/* pages/sessions.js — Sessions: every podcast shoot logged, and the sheet you export from it. */
+/* pages/sessions.js, Sessions: every podcast shoot logged, and the sheet you export from it. */
 import { $, $$, el, esc, icons, uid, nowISO, num, fmtMoney, toast, modal, confirmDialog, menu, printHTML, download, debounce } from "../ui.js";
 import { todayISO, dmy, dm, dayShort, monthLabel, ym, rangeFor, parse, today, iso, monday, weekLabel, weekShort, weekNo, addDays, relTime, DAY, MON, MONF } from "../dates.js";
 
@@ -18,6 +18,7 @@ export const DEFAULT_CFG = {
 
 let ctx, root, col, cfgDoc, intDoc, unsubs = [];
 let pushTimer = null, pushing = false, paintFrame = 0, mounted = 0, openedOnce = false;
+let retryTimer = null, retryStep = 0;
 let filters = { period: "thisMonth", location: "", editing: "", q: "" };
 
 /* ---------- helpers (exported for Home) ---------- */
@@ -32,7 +33,7 @@ export function cfg() {
   return c;
 }
 export const hrs = h => `${fmtMoney(h, 2)}h`;
-/* "14:00 – 16:30" — and the hours between them, counting a late finish past midnight */
+/* "14:00 – 16:30", and the hours between them, counting a late finish past midnight */
 export const timeRange = s => (s.start && s.end) ? `${s.start} – ${s.end}` : (s.start || "");
 export function hoursBetween(start, end) {
   if (!start || !end) return null;
@@ -48,7 +49,7 @@ export const money = v => fmtMoney(v, 2);
 export const sessionFee = s => num(s.fee);
 export const editingFee = s => (s.editing ? num(s.editingFee) : 0);
 export const sessionTotal = s => (s.complimentary ? 0 : sessionFee(s) + editingFee(s));
-/* a session logged before prices existed, or one never priced, is "—" rather than a made-up 0 */
+/* a session logged before prices existed, or one never priced, is "–" rather than a made-up 0 */
 export const priced = s => s.complimentary || s.fee !== undefined || s.editingFee !== undefined;
 
 /* the code that names an export: set in Options, otherwise the initials of the location */
@@ -85,15 +86,18 @@ export function attach(c) {
   if (attach._wired) return;
   attach._wired = true;
   col.subscribe(() => queueSheetPush());
+  // the sheet link lives in its own document; when it arrives late, anything outstanding goes now
+  intDoc.subscribe(() => queueSheetPush());
   /* Self-healing: a push can fail because you were offline, the script was mid-redeploy,
-     or the workspace wasn't unlocked yet. Nothing is lost — the signature check means these
+     or the workspace wasn't unlocked yet. Nothing is lost, the signature check means these
      retries are free when the sheet is already correct, and they catch up when it isn't. */
   const retry = () => queueSheetPush();
   window.addEventListener("online", retry);
   window.addEventListener("focus", retry);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) retry(); });
-  ctx.auth.onChange?.(retry);
+  ctx.auth.onChange?.(() => { retry(); setTimeout(reconcileSheet, 4000); });
   setInterval(retry, 120000);
+  setTimeout(reconcileSheet, 4000);
 }
 export function render(r, c) {
   attach(c); root = r;
@@ -202,18 +206,18 @@ function paint() {
       (hideAmt ? fig("With editing", t.edited)
                : fig("Billed", `<em>${esc(C)}</em>${money(t.total)}`, "accent") +
                  (t.comp ? fig("Complimentary", t.comp) : fig("With editing", t.edited)))
-    : fig(`Sessions · ${periodLabel()}`, "—", "lead") + fig("Hours", "—") + fig(hideAmt ? "With editing" : "Billed", "—");
+    : fig(`Sessions · ${periodLabel()}`, "–", "lead") + fig("Hours", "–") + fig(hideAmt ? "With editing" : "Billed", "–");
 
   const tb = $("[data-table]", root);
   if (!ready) {
     tb.innerHTML = `<div class="tbl-empty">${Date.now() - mounted > 8000
-      ? "Still loading your sessions — check your connection, this page will fill in by itself."
+      ? "Still loading your sessions, check your connection, this page will fill in by itself."
       : "Loading your sessions…"}</div>`;
     return;
   }
   if (!list.length) {
     tb.innerHTML = `<div class="tbl-empty">${everything.count
-      ? `Nothing logged ${esc(periodLabel())}.<div class="muted mt-8" style="font-size:13px">You have ${everything.count} session${everything.count === 1 ? "" : "s"} in total — ${hrs(everything.hours)}.</div><button type="button" class="btn sm mt-16" data-show-all>Show everything</button>`
+      ? `Nothing logged ${esc(periodLabel())}.<div class="muted mt-8" style="font-size:13px">You have ${everything.count} session${everything.count === 1 ? "" : "s"} in total – ${hrs(everything.hours)}.</div><button type="button" class="btn sm mt-16" data-show-all>Show everything</button>`
       : (owner ? `No sessions logged yet. <button type="button" class="btn primary sm" data-new-empty style="margin-left:8px">${icons.plus}Log a session</button>` : "No sessions logged yet.")}</div>`;
     return;
   }
@@ -232,9 +236,9 @@ function paint() {
       rows += `<tr data-id="${s.id}" class="${owner ? "clickable" : ""}">
         <td class="dim num hide-mobile" style="text-align:left;width:36px">${i}</td>
         <td class="date"><span class="hide-mobile">${esc(dayShort(s.date))}</span><span class="only-mobile">${esc(dm(s.date))}</span>${timeRange(s) ? `<div class="mono muted hide-mobile" style="font-size:10.5px;margin-top:3px">${esc(timeRange(s))}</div>` : ""}</td>
-        <td><div class="desc-lines"><div class="l"><b>${hideCli ? "Client" : esc(s.client || "—")}</b></div>
-          <div class="l sub only-narrow">${timeRange(s) ? `${esc(timeRange(s))} · ` : ""}${esc(s.location || "—")} · ${hrs(s.hours)}${s.editing && editingFee(s) && !s.complimentary ? ` · editing ${money(editingFee(s))}` : (s.editing ? " · editing" : "")}</div>${s.notes ? `<div class="l sub muted" style="font-size:12.5px">${esc(s.notes)}</div>` : ""}</div></td>
-        <td class="nw hide-narrow">${esc(s.location || "—")}</td>
+        <td><div class="desc-lines"><div class="l"><b>${hideCli ? "Client" : esc(s.client || "–")}</b></div>
+          <div class="l sub only-narrow">${timeRange(s) ? `${esc(timeRange(s))} · ` : ""}${esc(s.location || "–")} · ${hrs(s.hours)}${s.editing && editingFee(s) && !s.complimentary ? ` · editing ${money(editingFee(s))}` : (s.editing ? " · editing" : "")}</div>${s.notes ? `<div class="l sub muted" style="font-size:12.5px">${esc(s.notes)}</div>` : ""}</div></td>
+        <td class="nw hide-narrow">${esc(s.location || "–")}</td>
         <td class="num hide-narrow">${hrs(s.hours)}</td>
         <td class="hide-narrow">${ed}</td>
         ${hideAmt ? "" : `<td class="num">${amountCell(s)}</td>`}
@@ -252,7 +256,7 @@ function paint() {
   </table></div>`;
 }
 
-/* several store events can land in the same tick — repaint once, on the next frame */
+/* several store events can land in the same tick, repaint once, on the next frame */
 function schedulePaint() {
   if (paintFrame) return;
   // a timer, not requestAnimationFrame: rAF never fires while the tab is in the background,
@@ -260,21 +264,30 @@ function schedulePaint() {
   paintFrame = setTimeout(() => { paintFrame = 0; paint(); }, 16);
 }
 
-/* just the one line under the title — never the whole table */
+/* just the one line under the title, never the whole table */
 function paintSub() {
   const n = root?.isConnected ? $("[data-sub]", root) : null;
   if (!n) return;
   const sh = sheet();
   n.className = "sub row";
-  n.innerHTML = sh.url
-    ? `${icons.sheet}<span>Google Sheet ${sh.lastError ? `<span style="color:var(--bad)">— ${esc(sh.lastError)}</span>` : (sh.lastPushAt ? `up to date · sent ${esc(relTime(sh.lastPushAt))}` : "connected")}</span>`
-    : "Podcast shoots — client, hours, location and editing.";
+  if (!sh.url) { n.textContent = "Podcast shoots: client, hours, location, editing and fees."; return; }
+  const stuck = !!sh.pendingSig;
+  n.innerHTML = `${icons.sheet}<span>Google Sheet ${stuck
+    ? `<b style="color:var(--bad)">not sent yet</b>${sh.lastError ? ` · ${esc(sh.lastError)}` : ""}`
+    : (sh.lastPushAt ? `up to date · sent ${esc(relTime(sh.lastPushAt))}` : "connected")}</span>`
+    + (stuck ? ` <button type="button" class="btn sm" data-retry style="margin-left:4px">${icons.refresh}Retry</button>` : "");
+  $("[data-retry]", n)?.addEventListener("click", async e => {
+    const b = e.currentTarget; b.disabled = true; b.textContent = "Sending...";
+    const r = await pushSheet({ force: true });
+    toast(r.ok ? "Sheet updated" : r.error, { error: !r.ok });
+    paintSub();
+  });
 }
 
 /* One column, but it still shows what the money is made of. */
 function amountCell(s) {
   if (s.complimentary) return `<span class="pill neutral" style="font-weight:500">Complimentary</span>`;
-  if (!priced(s)) return `<span class="dim">—</span>`;
+  if (!priced(s)) return `<span class="dim">–</span>`;
   const f = sessionFee(s), e = editingFee(s);
   return `${money(f + e)}${f && e ? `<div class="mono muted hide-mobile" style="font-size:10.5px;margin-top:3px">${money(f)} + ${money(e)} editing</div>` : ""}`;
 }
@@ -332,7 +345,7 @@ export function openEditor(idOrNull, presets = {}) {
       <div class="field"><label for="zFee">Session fee (${esc(c.currency)})</label><input class="inp mono" id="zFee" type="number" step="any" min="0" value="${esc(s.fee ?? "")}" placeholder="0"></div>
       <div class="field" data-efee-wrap><label for="zEFee">Editing fee (${esc(c.currency)})</label><input class="inp mono" id="zEFee" type="number" step="any" min="0" value="${esc(s.editingFee ?? "")}" placeholder="0"></div>
     </div>
-    <div class="line-total"><span class="eyebrow">Total for this session</span><span class="v" data-ztotal>—</span></div>
+    <div class="line-total"><span class="eyebrow">Total for this session</span><span class="v" data-ztotal>–</span></div>
     <div class="field"><label for="zNotes">Notes</label><input class="inp" id="zNotes" value="${esc(s.notes || "")}" placeholder="Guest, episode, anything useful"></div>
     <p class="hint">Locations, codes and the standard prices live in <b>Options</b>.</p>
   </div>`);
@@ -392,10 +405,10 @@ export function openEditor(idOrNull, presets = {}) {
 }
 
 /* The web app link and the sheet's own link are different things, and only you have
-   the second one — ask for it the first time the button is pressed, then never again. */
+   the second one, ask for it the first time the button is pressed, then never again. */
 function askForSheetLink() {
   const body = el(`<div class="stack gap-12">
-    <p class="ink2">Paste the link to the Google Sheet itself — the one you open to look at it, and the one your manager uses.</p>
+    <p class="ink2">Paste the link to the Google Sheet itself, the one you open to look at it, and the one your manager uses.</p>
     <div class="field"><label for="qSheet">Sheet link</label><input class="inp mono" id="qSheet" style="font-size:12px" placeholder="https://docs.google.com/spreadsheets/d/…" autofocus></div>
     <p class="hint">In the sheet: <b>Share → Anyone with the link → Viewer</b>, then <b>Copy link</b>.</p>
   </div>`);
@@ -433,17 +446,17 @@ function openOptions() {
         <div class="field"><label for="oDefFee">Session fee</label><input class="inp mono" id="oDefFee" type="number" step="any" min="0" value="${esc(c.defaults.fee)}"></div>
         <div class="field"><label for="oDefEFee">Editing fee</label><input class="inp mono" id="oDefEFee" type="number" step="any" min="0" value="${esc(c.defaults.editingFee)}"></div>
       </div>
-      <span class="hint">Your usual prices — filled in on every new session, and changeable on each one.</span>
+      <span class="hint">Your usual prices, filled in on every new session, and changeable on each one.</span>
     </div>
     <p class="hint">Renaming a location leaves past sessions exactly as they were logged. The short code names your exports: <b>DH Podcast | September</b>.</p>
     <div class="divider" style="margin:2px 0"></div>
     <div class="field"><label>Google Sheet</label>
-      <p class="hint" style="margin:-2px 0 8px">Every session you log is written into a Google Sheet, so your manager only needs the sheet link — nothing to send, nothing to export by hand.</p>
+      <p class="hint" style="margin:-2px 0 8px">Every session you log is written into a Google Sheet, so your manager only needs the sheet link, nothing to send, nothing to export by hand.</p>
       <div class="row wrap mb-8"><span class="badge-mode ${sh0.url ? "cloud" : "local"}">${sh0.url ? (sh0.lastPushAt ? `Connected · sent ${esc(relTime(sh0.lastPushAt))}` : "Connected") : "Not connected"}</span>${sh0.lastError ? `<span class="muted" style="font-size:12.5px;color:var(--bad)">${esc(sh0.lastError)}</span>` : ""}</div>
       <div class="field mb-8"><label for="oSheetUrl">Web app link (ends in /exec)</label><input class="inp mono" id="oSheetUrl" value="${esc(sh0.url || "")}" placeholder="https://script.google.com/macros/s/…/exec" style="font-size:12px"></div>
-      <div class="field"><label for="oSheetView">Sheet link — the one you give your manager (optional)</label><input class="inp mono" id="oSheetView" value="${esc(sh0.viewUrl || "")}" placeholder="https://docs.google.com/spreadsheets/d/…" style="font-size:12px"></div>
+      <div class="field"><label for="oSheetView">Sheet link, the one you give your manager (optional)</label><input class="inp mono" id="oSheetView" value="${esc(sh0.viewUrl || "")}" placeholder="https://docs.google.com/spreadsheets/d/…" style="font-size:12px"></div>
       <div class="row wrap mt-8"><button type="button" class="btn sm" data-sheet-send>${icons.refresh}Save and send everything now</button></div>
-      <details class="mt-8"><summary style="cursor:pointer;font-weight:500;font-size:13.5px">How to set it up — five minutes, once</summary>
+      <details class="mt-8"><summary style="cursor:pointer;font-weight:500;font-size:13.5px">How to set it up, five minutes, once</summary>
         <ol class="steps mt-8">
           <li><p>In Google Drive create a <b>new spreadsheet</b> and name it, e.g. <b>flowork podcast sessions</b>.</p></li>
           <li><p>In it: <b>Extensions → Apps Script</b>. Delete whatever is in the editor, paste the script below, and press <b>Save</b>.</p></li>
@@ -453,7 +466,7 @@ function openOptions() {
         </ol>
         <pre class="code mt-8" style="max-height:220px;overflow:auto">${esc(APPS_SCRIPT)}</pre>
         <button type="button" class="btn sm mt-8" data-copy-script>${icons.copy}Copy the script</button>
-        <p class="hint mt-8">Keep the web app link private: anyone who has it can write to that sheet. Only the sessions table is sent — nothing about tasks or commission.</p>
+        <p class="hint mt-8">Keep the web app link private: anyone who has it can write to that sheet. Only the sessions table is sent, nothing about tasks or commission.</p>
       </details>
     </div>
   </div>`);
@@ -484,7 +497,7 @@ function openOptions() {
     if (ev.target.closest("[data-add-loc]")) { c.locations.push("New location"); paintLocs(); const ins = $$('[data-list="locations"] .nm', body); ins[ins.length - 1]?.select(); }
   });
   paintLocs();
-  $("[data-copy-script]", body)?.addEventListener("click", () => navigator.clipboard.writeText(APPS_SCRIPT).then(() => toast("Script copied — paste it into Apps Script")).catch(() => toast("Copy failed", { error: true })));
+  $("[data-copy-script]", body)?.addEventListener("click", () => navigator.clipboard.writeText(APPS_SCRIPT).then(() => toast("Script copied, paste it into Apps Script")).catch(() => toast("Copy failed", { error: true })));
   const saveSheet = () => {
     const url = $("#oSheetUrl", body).value.trim(), viewUrl = $("#oSheetView", body).value.trim();
     intDoc.set({ sheet: { ...sheet(), url, viewUrl, lastError: "" } });
@@ -522,7 +535,7 @@ function openOptions() {
    Every change is pushed to an Apps Script web app the user deploys on their own sheet,
    so a manager can just open the sheet link. The whole table is sent each time, which
    keeps the sheet correct after edits and deletions without any diffing. */
-export const sheet = () => ({ url: "", lastSig: "", lastPushAt: "", ...(intDoc?.get()?.sheet || {}) });
+export const sheet = () => ({ url: "", viewUrl: "", lastSig: "", lastCount: 0, lastPushAt: "", pendingSig: "", lastError: "", ...(intDoc?.get()?.sheet || {}) });
 const SHEET_HEAD = ["Date", "From", "To", "Client", "Location", "Hours", "Editing", "Billing", "Session", "Editing fee", "Total", "Notes"];
 const MONTH_HEAD = ["Month", "Sessions", "Hours", "With editing", "Complimentary", "Session fees", "Editing fees", "Total"];
 
@@ -553,7 +566,7 @@ function sheetPayload() {
   months.push(["Total", t.count, t.hours, t.edited, t.comp, t.fees, t.editFees, t.total]);
 
   return {
-    app: "flowork-backstage", v: 2, generatedAt: nowISO(),
+    app: "flowork-backstage", v: 3,
     sheets: [
       { name: "Sessions", grid, bands, total,
         formats: ["ddd d mmm yyyy", "", "", "", "", '0.##"h"', "", "", "#,##0.00", "#,##0.00", "#,##0.00", ""],
@@ -567,47 +580,105 @@ function sheetPayload() {
 }
 const sig = str => { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return String(h); };
 
+/* Nothing is ever reported as sent unless the sheet itself confirms it holds that exact
+   version. The old code fell back to a no-cors request whose reply cannot be read, then
+   recorded success: a failing script looked identical to a working one, and because the
+   signature was recorded, every later change was skipped as "already sent". */
 export async function pushSheet({ force = false } = {}) {
   const cfg = sheet();
   if (!cfg.url) return { ok: false, error: "No Google Sheet connected yet." };
   if (!ctx.auth.isOwner) return { ok: false, error: "Unlock with your PIN first." };
   if (pushing) return { ok: true, skipped: true };
   await col.ready;
-  /* Guards against wiping the manager's sheet. A Firestore listener that opens a moment
-     before sign-in lands is refused and reports an empty list until it retries — sending
-     that would blank the sheet and then fill it again a second later. */
+  // a listener refused before sign-in reports zero sessions; sending that would blank the sheet
   if (col.denied) return { ok: false, skipped: true, error: "Not unlocked yet" };
   const list = all();
-  if (!list.length && Number(cfg.lastCount || 0) > 0 && !force) return { ok: false, skipped: true, error: "Nothing loaded yet — not sending an empty sheet" };
-  const payload = sheetPayload(), body = JSON.stringify(payload), s = sig(body);
-  if (!force && s === cfg.lastSig) return { ok: true, skipped: true };
+  if (!list.length && Number(cfg.lastCount || 0) > 0 && !force) return { ok: false, skipped: true, error: "Nothing loaded yet, not sending an empty sheet" };
+
+  const payload = sheetPayload(), s = sig(JSON.stringify(payload));
+  payload.sig = s;
+  if (!force && s === cfg.lastSig && !cfg.pendingSig) return { ok: true, skipped: true };
+
   pushing = true;
-  try { return await send(cfg, body, s, list.length); } finally { pushing = false; }
+  try { return await send(cfg, JSON.stringify(payload), s, list.length); }
+  finally { pushing = false; }
+}
+
+/* Ask the sheet which version it is holding. This is the proof, not the POST going out. */
+async function sheetState(url) {
+  try {
+    const u = url + (url.includes("?") ? "&" : "?") + "probe=1&t=" + Date.now();
+    const res = await fetch(u, { method: "GET", redirect: "follow" });
+    if (!res.ok) return null;
+    const j = JSON.parse(await res.text());
+    return (j && j.ok && typeof j.sig === "string") ? j : null;
+  } catch (e) { return null; }
 }
 
 async function send(cfg, body, s, count) {
+  const fail = (error, extra = {}) => {
+    intDoc.set({ sheet: { ...cfg, pendingSig: s, lastError: error, ...extra } });
+    scheduleRetry();
+    return { ok: false, error };
+  };
+  // remember, before the request goes out, that this version is outstanding
+  intDoc.set({ sheet: { ...cfg, pendingSig: s, lastError: "" } });
+
+  let confirmed = false, reason = "";
   try {
-    // text/plain keeps it a "simple" request, so the browser sends it without a preflight
+    // text/plain keeps it a simple request, so the browser sends it without a preflight
     const res = await fetch(cfg.url, { method: "POST", body, headers: { "Content-Type": "text/plain;charset=utf-8" }, redirect: "follow" });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    // the script answers {"ok":true}; anything else means it ran but failed (usually an old version)
-    const txt = await res.text();
-    if (!/"ok"\s*:\s*true/.test(txt)) {
-      const err = "The sheet script is out of date — paste the new one and redeploy";
-      intDoc.set({ sheet: { ...cfg, lastError: err } });
-      return { ok: false, error: err };
-    }
+    const txt = res.ok ? await res.text() : "";
+    let j = null;
+    try { j = JSON.parse(txt); } catch (e) { j = null; }
+    if (j && j.ok && j.sig === s) confirmed = true;
+    else if (!res.ok) reason = "The sheet script returned an error (HTTP " + res.status + ")";
+    else reason = "The sheet script did not confirm the update";
   } catch (e) {
-    try { await fetch(cfg.url, { method: "POST", body, mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" } }); }
-    catch (e2) { intDoc.set({ sheet: { ...cfg, lastError: "Couldn't reach the sheet" } }); return { ok: false, error: "Couldn't reach the sheet — check the link, or your connection." }; }
+    reason = "Couldn't reach the sheet";
   }
-  intDoc.set({ sheet: { ...cfg, lastSig: s, lastCount: count, lastPushAt: nowISO(), lastError: "" } });
+
+  // the reply may be unreadable even when the write worked, so ask the sheet directly
+  if (!confirmed) {
+    const st = await sheetState(cfg.url);
+    if (st && st.sig === s) confirmed = true;
+    else if (st) reason = "The sheet is still on an older version";
+    else if (!reason) reason = "The sheet did not answer";
+  }
+
+  if (!confirmed) return fail(reason + ". Open Options to check the script, or press Retry.");
+  retryStep = 0;
+  intDoc.set({ sheet: { ...cfg, lastSig: s, lastCount: count, lastPushAt: nowISO(), pendingSig: "", lastError: "" } });
   return { ok: true, rows: count };
 }
+
+/* Anything outstanding is retried: quickly at first, then slowly, forever while the app is open. */
+const RETRY_STEPS = [5000, 15000, 60000, 120000];
+function scheduleRetry() {
+  clearTimeout(retryTimer);
+  const wait = RETRY_STEPS[Math.min(retryStep, RETRY_STEPS.length - 1)];
+  retryStep++;
+  retryTimer = setTimeout(() => pushSheet().then(paintSub), wait);
+}
+
 function queueSheetPush() {
   if (!ctx?.auth?.isOwner || !sheet().url || col.denied) return;
   clearTimeout(pushTimer);
-  pushTimer = setTimeout(() => { pushSheet().then(r => { if (!r.ok && !r.skipped) console.warn("[sessions] sheet push:", r.error); paintSub(); }); }, 2500);
+  pushTimer = setTimeout(() => {
+    pushSheet().then(r => { if (!r.ok && !r.skipped) console.warn("[sessions] sheet:", r.error); paintSub(); });
+  }, 2500);
+}
+
+/* On opening the app, compare what the sheet holds with what we have. This repairs a sheet
+   that was cleared, edited by hand, or left stale by an earlier failure. */
+async function reconcileSheet() {
+  const cfg = sheet();
+  if (!cfg.url || !ctx?.auth?.isOwner || col.denied) return;
+  await col.ready;
+  const st = await sheetState(cfg.url);
+  if (!st) { queueSheetPush(); return; }
+  const mine = sig(JSON.stringify(sheetPayload()));
+  if (st.sig !== mine) pushSheet({ force: true }).then(paintSub);
 }
 
 export const APPS_SCRIPT = `/** flowork Backstage -> this sheet. Paste, save, deploy. Nothing to edit, ever. */
@@ -615,9 +686,20 @@ function doPost(e) {
   var body = JSON.parse(e.postData.contents);
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   for (var i = 0; i < body.sheets.length; i++) render_(ss, body.sheets[i]);
-  return ContentService
-    .createTextOutput(JSON.stringify({ ok: true }))
-    .setMimeType(ContentService.MimeType.JSON);
+  // only reached if every sheet rendered without throwing
+  var state = { ok: true, sig: String(body.sig || ''), rows: body.sheets[0].grid.length, at: new Date().toISOString() };
+  PropertiesService.getScriptProperties().setProperty('state', JSON.stringify(state));
+  return json_(state);
+}
+
+/** Lets the app ask what this sheet is actually holding, so it can never claim a false success. */
+function doGet() {
+  var raw = PropertiesService.getScriptProperties().getProperty('state');
+  return json_(raw ? JSON.parse(raw) : { ok: true, sig: '', rows: 0, at: '' });
+}
+
+function json_(o) {
+  return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
 }
 
 function render_(ss, s) {
@@ -717,8 +799,8 @@ function openExport() {
 function grouped(list, by) {
   const key = s => by === "week" ? iso(monday(parse(s.date || todayISO())))
     : by === "month" ? ym(s.date)
-    : by === "client" ? (s.client || "—")
-    : (s.location || "—");
+    : by === "client" ? (s.client || "–")
+    : (s.location || "–");
   const label = k => by === "week" ? weekLabel(k) : by === "month" ? monthLabel(k) : k;
   const map = new Map();
   list.forEach(s => { const k = key(s); if (!map.has(k)) map.set(k, []); map.get(k).push(s); });
@@ -728,7 +810,7 @@ function grouped(list, by) {
 const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
 
 /* ---------- what an export is called ----------
-   "DH Podcast | September" — the location's short code, then the period it covers. */
+   "DH Podcast | September", the location's short code, then the period it covers. */
 function periodName(from, to) {
   if (!from && !to) return "All time";
   const a = parse(from || to), b = parse(to || from);
@@ -786,7 +868,7 @@ function downloadCSV(sel) {
       .concat(hideAmt ? [] : [t.comp, t.fees, t.editFees, t.total]).map(q).join(","));
   }
   download(`${exportName(sel)}.csv`, "﻿" + [head.map(q).join(","), ...rows].join("\r\n"), "text/csv;charset=utf-8");
-  toast("Downloaded — opens straight in Sheets or Excel");
+  toast("Downloaded, opens straight in Sheets or Excel");
 }
 
 /* ---------- the printed sheet ----------
@@ -812,11 +894,11 @@ function printSheet(sel) {
     const cols = 4 + (anyTime ? 1 : 0) + (showLoc ? 1 : 0) + (hideAmt ? 0 : 3);
     let rows = "";
     gs.forEach(g => {
-      if (gs.length > 1) rows += `<tr class="grp"><td colspan="${cols}">${esc(g.label)} — ${g.count} session${g.count === 1 ? "" : "s"}, ${hrs(g.hours)}${hideAmt ? "" : `, ${esc(C)} ${amt(g.total)}`}</td></tr>`;
+      if (gs.length > 1) rows += `<tr class="grp"><td colspan="${cols}">${esc(g.label)} – ${g.count} session${g.count === 1 ? "" : "s"}, ${hrs(g.hours)}${hideAmt ? "" : `, ${esc(C)} ${amt(g.total)}`}</td></tr>`;
       g.rows.forEach(x => {
-        rows += `<tr><td class="d">${esc(dayShort(x.date))}</td>${anyTime ? `<td class="d">${esc(timeRange(x) || "—")}</td>` : ""}<td>${hideCli ? "Client" : esc(x.client || "—")}${notes && x.notes ? `<div class="sub">${esc(x.notes)}</div>` : ""}</td>${showLoc ? `<td>${esc(x.location || "—")}</td>` : ""}<td class="n">${hrs(x.hours)}</td><td>${x.editing ? "Yes" : "No"}</td>${hideAmt ? "" : (x.complimentary
-          ? `<td class="n">—</td><td class="n">—</td><td class="n">Complimentary</td>`
-          : `<td class="n">${priced(x) ? amt(sessionFee(x)) : "—"}</td><td class="n">${x.editing ? amt(editingFee(x)) : "—"}</td><td class="n b">${priced(x) ? amt(sessionTotal(x)) : "—"}</td>`)}</tr>`;
+        rows += `<tr><td class="d">${esc(dayShort(x.date))}</td>${anyTime ? `<td class="d">${esc(timeRange(x) || "–")}</td>` : ""}<td>${hideCli ? "Client" : esc(x.client || "–")}${notes && x.notes ? `<div class="sub">${esc(x.notes)}</div>` : ""}</td>${showLoc ? `<td>${esc(x.location || "–")}</td>` : ""}<td class="n">${hrs(x.hours)}</td><td>${x.editing ? "Yes" : "No"}</td>${hideAmt ? "" : (x.complimentary
+          ? `<td class="n">–</td><td class="n">–</td><td class="n">Complimentary</td>`
+          : `<td class="n">${priced(x) ? amt(sessionFee(x)) : "–"}</td><td class="n">${x.editing ? amt(editingFee(x)) : "–"}</td><td class="n b">${priced(x) ? amt(sessionTotal(x)) : "–"}</td>`)}</tr>`;
       });
     });
     table = `<table><thead><tr><th>Date</th>${anyTime ? "<th>Time</th>" : ""}<th>Client</th>${showLoc ? "<th>Location</th>" : ""}<th class="r">Hours</th><th>Editing</th>${hideAmt ? "" : `<th class="r">Session</th><th class="r">Editing</th><th class="r">Total</th>`}</tr></thead>

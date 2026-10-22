@@ -1,4 +1,4 @@
-/* pages/home.js — Home: a mini preview of everything, and a way into each tab. */
+/* pages/home.js, Home: a mini preview of everything, and a way into each tab. */
 import { $, $$, esc, icons, fmtMoney } from "../ui.js";
 import { iso, today, todayISO, addDays, addMonths, monday, weekNo, weekLabel, dayShort, rangeFor, greetingFor, DAY, DAYF, MONF, MON, monthKey, ym } from "../dates.js";
 import * as work from "./tasks.js";
@@ -27,7 +27,7 @@ function paint() {
   const showPeople = !ctx.auth.mask("tasksPeople"), showNotes = !ctx.auth.mask("tasksNotes"), hideAmt = ctx.auth.mask("commissionAmounts");
   const tasksCol = ctx.store.collection("tasks"), salesCol = ctx.store.collection("commission"), sessCol = ctx.store.collection("sessions");
   const okTasks = tasksCol.loaded !== false, okSales = salesCol.loaded !== false, okSess = sessCol.loaded !== false;
-  const n = (ok, v) => ok ? v : "—";
+  const n = (ok, v) => ok ? v : "–";
   const tasks = canWork ? ctx.store.collection("tasks").all() : [];
   const sales = canLedger ? ctx.store.collection("commission").all() : [];
   const sessions = canSess ? ctx.store.collection("sessions").all() : [];
@@ -82,14 +82,14 @@ function paint() {
       ${canWork && okTasks && late.length ? fig("Past due", late.length, "due") : ""}
       ${canWork && (!okTasks || !late.length) ? fig("Done this week", n(okTasks, doneWeek.length), "good") : ""}
       ${canSess ? fig("Sessions · last 30 days", n(okSess, sRecent.count)) : ""}
-      ${canLedger && !hideAmt ? fig("Balance due", okSales ? `<em>${esc(cur)}</em>${fmtMoney(s.due)}` : "—", "due") : ""}
+      ${canLedger && !hideAmt ? fig("Balance due", okSales ? `<em>${esc(cur)}</em>${fmtMoney(s.due)}` : "–", "due") : ""}
       ${canLedger && hideAmt ? fig("Sales logged", n(okSales, s.count)) : ""}
     </div>
 
     <div class="ov-grid mt-24">
       ${canWork ? `<div class="card">
         <div class="card-h"><h2>What's on</h2><a href="#/tasks">Open Tasks</a></div>
-        <div class="ov-list">${focus.length ? focus.map(line).join("") : `<div class="tbl-empty" style="padding:32px 20px">Clear desk — nothing due today, nothing past due.</div>`}</div>
+        <div class="ov-list">${focus.length ? focus.map(line).join("") : `<div class="tbl-empty" style="padding:32px 20px">Clear desk, nothing due today, nothing past due.</div>`}</div>
       </div>` : ""}
       <div class="stack gap-24">
         ${canLedger ? `<div class="card">
@@ -110,7 +110,7 @@ function paint() {
           <div class="card-b">
             <div class="eyebrow">Last 30 days</div>
             <div class="serif" style="font-size:38px;line-height:1.05;margin-top:6px">${n(okSess, sRecent.count)}<span class="mono muted" style="font-size:12px;margin-left:8px">${esc(shoots.hrs(sRecent.hours))}</span></div>
-            ${recent.length ? `<div class="divider" style="margin:18px 0"></div><div class="eyebrow mb-8">Latest shoots</div>${recent.map(x => `<div class="row" style="justify-content:space-between;gap:12px;padding:5px 0;font-size:13px"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ctx.auth.mask("sessionsClients") ? "Client" : esc(x.client || "—")}<span class="muted"> · ${esc(x.location || "—")}</span></span><span class="mono muted" style="font-size:11.5px;white-space:nowrap">${esc(shoots.hrs(x.hours))} · ${esc(dayShort(x.date))}</span></div>`).join("")}` : `<div class="muted mt-16" style="font-size:13px">No sessions logged yet.</div>`}
+            ${recent.length ? `<div class="divider" style="margin:18px 0"></div><div class="eyebrow mb-8">Latest shoots</div>${recent.map(x => `<div class="row" style="justify-content:space-between;gap:12px;padding:5px 0;font-size:13px"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ctx.auth.mask("sessionsClients") ? "Client" : esc(x.client || "–")}<span class="muted"> · ${esc(x.location || "–")}</span></span><span class="mono muted" style="font-size:11.5px;white-space:nowrap">${esc(shoots.hrs(x.hours))} · ${esc(dayShort(x.date))}</span></div>`).join("")}` : `<div class="muted mt-16" style="font-size:13px">No sessions logged yet.</div>`}
           </div>
         </div>` : ""}
         ${canWork ? `<div class="card">

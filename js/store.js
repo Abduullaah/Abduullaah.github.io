@@ -1,4 +1,4 @@
-/* store.js — one data layer, two backends.
+/* store.js, one data layer, two backends.
    local  : localStorage (this device only; instant)
    cloud  : Firebase Firestore (live sync on every device, offline-capable)
    Pages only ever talk to store.collection(name) / store.doc(name) / store.settings.
@@ -91,7 +91,7 @@ function cloudCollection(fb, name, setStatus) {
   const ev = emitter();
   /* A listener opened before sign-in lands is refused, and a refused listener stays dead.
      That is how a private page ends up showing a confident zero. So: back off, but never
-     stop trying while somebody is signed in — the page must catch up on its own. */
+     stop trying while somebody is signed in, the page must catch up on its own. */
   const scheduleRetry = () => {
     clearTimeout(retryTimer);
     const signedIn = !!fb.auth.currentUser;
@@ -118,7 +118,7 @@ function cloudCollection(fb, name, setStatus) {
     });
   };
   start();
-  const write = p => { setStatus("saving"); return p.then(() => true).catch(e => { console.error("[store] write failed", name, e); setStatus("error"); toast(e.code === "permission-denied" ? "Not saved — unlock with your PIN first" : "Not saved — check your connection", { error: true }); return false; }); };
+  const write = p => { setStatus("saving"); return p.then(() => true).catch(e => { console.error("[store] write failed", name, e); setStatus("error"); toast(e.code === "permission-denied" ? "Not saved, unlock with your PIN first" : "Not saved, check your connection", { error: true }); return false; }); };
   const CHUNK = 400;   // Firestore allows 500 operations per batch
   const commitChunks = async ops => {
     for (let i = 0; i < ops.length; i += CHUNK) {
@@ -178,7 +178,7 @@ function cloudDoc(fb, path, setStatus) {
     });
   };
   start();
-  const write = p => { setStatus("saving"); return p.then(() => true).catch(e => { console.error("[store] write failed", path.join("/"), e); setStatus("error"); toast(e.code === "permission-denied" ? "Not saved — unlock with your PIN first" : "Not saved — check your connection", { error: true }); return false; }); };
+  const write = p => { setStatus("saving"); return p.then(() => true).catch(e => { console.error("[store] write failed", path.join("/"), e); setStatus("error"); toast(e.code === "permission-denied" ? "Not saved, unlock with your PIN first" : "Not saved, check your connection", { error: true }); return false; }); };
   return {
     name: path.join("/"), ready, get denied() { return denied; }, get loaded() { return loaded; },
     get: () => data,
@@ -223,7 +223,7 @@ class Store {
           window.addEventListener("online", () => this._setStatus("synced"));
           window.addEventListener("offline", () => this._setStatus("offline"));
         } catch (e) {
-          console.error("[store] Firebase failed to load — falling back to local", e);
+          console.error("[store] Firebase failed to load, falling back to local", e);
           this.error = e; this.mode = "local";
         }
       }
@@ -240,7 +240,7 @@ class Store {
       this.settings = this.mode === "cloud"
         ? cloudDoc(this.fb, ["public", "settings"], s => this._setStatus(s))
         : localDoc("settings", () => this._changeEv.emit(), "settings");
-      // never hang the app on a slow / unreachable backend — the listener keeps trying in the background
+      // never hang the app on a slow / unreachable backend, the listener keeps trying in the background
       const timedOut = await Promise.race([this.settings.ready.then(() => false), new Promise(r => setTimeout(() => r(true), 3500))]);
       if (timedOut) this._setStatus(navigator.onLine ? "error" : "offline");
     })();
